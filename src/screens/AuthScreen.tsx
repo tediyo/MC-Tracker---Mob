@@ -6,6 +6,7 @@ import { useAppAlert } from "../context/AlertContext";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
+import { AppLogo } from "../components/ui/AppLogo";
 
 export function AuthScreen() {
   const { theme } = useTheme();
@@ -52,10 +53,7 @@ export function AuthScreen() {
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <View style={styles.brandContainer}>
-          <View style={[styles.logoBadge, { backgroundColor: theme.primaryLight, borderColor: theme.primary }]}>
-            <Text style={[styles.logoText, { color: theme.primary }]}>MC</Text>
-          </View>
-          <Text style={[styles.brandTitle, { color: theme.textPrimary }]}>MC Tracker</Text>
+          <AppLogo width={180} style={styles.logo} />
           <Text style={[styles.brandSubtitle, { color: theme.textSecondary }]}>Personal Financial Management</Text>
         </View>
 
@@ -118,22 +116,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 24,
   },
-  logoBadge: {
-    width: 60,
-    height: 60,
-    borderRadius: 18,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-  },
-  logoText: {
-    fontSize: 22,
-    fontWeight: "900",
-  },
-  brandTitle: {
-    fontSize: 24,
-    fontWeight: "800",
+  logo: {
+    marginBottom: 8,
   },
   brandSubtitle: {
     fontSize: 13,

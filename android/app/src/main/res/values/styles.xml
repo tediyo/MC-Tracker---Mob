@@ -14,4 +14,17 @@
   <style name="Theme.App.SplashScreen" parent="AppTheme">
     <item name="android:windowBackground">@drawable/splashscreen</item>
   </style>
+
+  <!-- Android 12+ (API 31+) ignores the legacy windowBackground splash trick above and
+       enforces its own system splash - this is what actually controls it there. Pre-12
+       devices still use Theme.App.SplashScreen via MainActivity's installSplashScreen().
+       windowSplashScreenAnimatedIcon reuses the adaptive icon foreground - the OS masks
+       it into an icon shape regardless of what's supplied, so this can't show the full
+       rectangular logo (see MainActivity.kt) - that's shown right after by the JS loading
+       screen instead. -->
+  <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+    <item name="windowSplashScreenBackground">@color/splashscreen_background</item>
+    <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+    <item name="postSplashScreenTheme">@style/AppTheme</item>
+  </style>
 </resources>

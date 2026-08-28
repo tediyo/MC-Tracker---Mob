@@ -2,6 +2,7 @@ package com.anonymous.mctrackermobile
 
 import android.os.Build
 import android.os.Bundle
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
@@ -10,10 +11,11 @@ import com.facebook.react.defaults.DefaultReactActivityDelegate
 
 class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
-    // Set the theme to AppTheme BEFORE onCreate to support coloring the
-    // background, status bar, and navigation bar during the splash screen
-    // (see res/drawable/splashscreen.xml and res/values/styles.xml).
-    setTheme(R.style.AppTheme);
+    // Must be called before super.onCreate() - installs the real Splash Screen API on
+    // Android 12+ and a compatible shim on older versions, both driven by
+    // Theme.App.Starting (styles.xml) instead of the old manual setTheme() trick.
+    // It also handles switching to postSplashScreenTheme (AppTheme) automatically.
+    installSplashScreen()
     super.onCreate(null)
   }
 

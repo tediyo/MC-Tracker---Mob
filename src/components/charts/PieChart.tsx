@@ -14,10 +14,32 @@ interface PieChartProps {
   data: PieChartSlice[];
   size?: number;
   showBalances?: boolean;
+  /** Center label above the total value. Defaults to "Total Costs" since that's the only
+   * caller historically - pass an explicit label for charts summing anything else. */
+  totalLabel?: string;
+  /** Renders text/legend colors from a fixed light palette instead of the active app theme.
+   * Used only when this chart is captured off-screen for the PDF report: the printed page
+   * is always white regardless of whether the app itself is in dark mode, so reusing
+   * theme colors there baked dark-mode's near-black text/background into the export. */
+  forceLightMode?: boolean;
 }
 
-export function SimplePieChart({ data, size = 160, showBalances = true }: PieChartProps) {
-  const { theme } = useTheme();
+const LIGHT_CAPTURE_COLORS = {
+  textMuted: "#71717a",
+  textPrimary: "#09090b",
+  textSecondary: "#475569",
+  border: "#e2e8f0",
+};
+
+export function SimplePieChart({
+  data,
+  size = 160,
+  showBalances = true,
+  totalLabel = "Total Costs",
+  forceLightMode = false,
+}: PieChartProps) {
+  const { theme: appTheme } = useTheme();
+  const theme = forceLightMode ? LIGHT_CAPTURE_COLORS : appTheme;
   const total = data.reduce((sum, item) => sum + item.value, 0);
 
   if (total === 0) {
@@ -77,7 +99,7 @@ export function SimplePieChart({ data, size = 160, showBalances = true }: PieCha
           </G>
         </Svg>
         <View style={styles.centerTextContainer}>
-          <Text style={[styles.totalLabel, { color: theme.textMuted }]}>Total Costs</Text>
+          <Text style={[styles.totalLabel, { color: theme.textMuted }]}>{totalLabel}</Text>
           <Text style={[styles.totalValue, { color: theme.textPrimary }]}>
             {showBalances ? formatCurrency(total) : "ETB ••••••"}
           </Text>

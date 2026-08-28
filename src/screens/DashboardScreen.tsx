@@ -52,9 +52,13 @@ export function DashboardScreen() {
   // Balance Privacy Visibility Toggle
   const [showBalances, setShowBalances] = useState<boolean>(true);
 
-  // PDF report generation - refs let react-native-view-shot capture these exact charts
-  const pieChartRef = useRef<View>(null);
+  // PDF report generation - refs let react-native-view-shot capture these exact charts.
+  // Both capture targets are hidden, forceLightMode copies (see the offscreen block below)
+  // rather than the on-screen charts, so the export stays white/print-friendly no matter
+  // what theme the app is currently in.
   const barChartRef = useRef<View>(null);
+  const categoryPieCaptureRef = useRef<View>(null);
+  const incomeCostPieRef = useRef<View>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   // Timeframe switcher state
@@ -194,9 +198,9 @@ export function DashboardScreen() {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     try {
-      const [pieChartBase64, barChartBase64] = await Promise.all([
-        captureRef(pieChartRef, { format: "png", quality: 0.9, result: "base64" }),
-        captureRef(barChartRef, { format: "png", quality: 0.9, result: "base64" }),
+      const [pieChartBase64, incomeCostPieBase64] = await Promise.all([
+        captureRef(categoryPieCaptureRef, { format: "png", quality: 0.9, result: "base64" }),
+        captureRef(incomeCostPieRef, { format: "png", quality: 0.9, result: "base64" }),
       ]);
 
       const html = buildOverviewReportHtml({
@@ -206,11 +210,12 @@ export function DashboardScreen() {
         netProfitLoss: dashboardData.netProfitLoss,
         costLimit: dashboardData.costLimit,
         costVariance: dashboardData.costVariance,
+        savingsGoal: dashboardData.savingsGoal,
         basicCost: dashboardData.basicCost,
         fancyCost: dashboardData.fancyCost,
         extraCost: dashboardData.extraCost,
         pieChartBase64,
-        barChartBase64,
+        incomeCostPieBase64,
       });
 
       await RNPrint.print({ html });
@@ -385,7 +390,7 @@ export function DashboardScreen() {
           {/* Category Donut Chart */}
           <Card>
             <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Category Expense Proportions</Text>
-            <View ref={pieChartRef} collapsable={false} style={{ backgroundColor: theme.card }}>
+            <View style={{ backgroundColor: theme.card }}>
               <SimplePieChart
                 data={[
                   { label: "Basic", value: dashboardData?.basicCost || 0, color: theme.primary },
@@ -412,6 +417,37 @@ export function DashboardScreen() {
               />
             </View>
           </Card>
+
+          {/* Not shown on screen - captured for the PDF report only. Both charts here use
+              forceLightMode and a fixed white background instead of the on-screen theme,
+              since the printed report page is always white - reusing the (possibly
+              dark-themed) on-screen charts baked a black background into the export. The
+              category chart is duplicated here rather than reused from the section above
+              purely so the on-screen version can stay theme-aware. */}
+          <View style={styles.offscreenCapture} pointerEvents="none">
+            <View ref={categoryPieCaptureRef} collapsable={false} style={{ backgroundColor: "#ffffff" }}>
+              <SimplePieChart
+                data={[
+                  { label: "Basic", value: dashboardData?.basicCost || 0, color: theme.primary },
+                  { label: "Fancy", value: dashboardData?.fancyCost || 0, color: "#f59e0b" },
+                  { label: "Extra", value: dashboardData?.extraCost || 0, color: "#3b82f6" },
+                ]}
+                showBalances={showBalances}
+                forceLightMode
+              />
+            </View>
+            <View ref={incomeCostPieRef} collapsable={false} style={{ backgroundColor: "#ffffff" }}>
+              <SimplePieChart
+                data={[
+                  { label: "Income", value: dashboardData?.totalIncome || 0, color: theme.primary },
+                  { label: "Costs", value: dashboardData?.totalCosts || 0, color: "#3b82f6" },
+                ]}
+                showBalances={showBalances}
+                totalLabel="Total"
+                forceLightMode
+              />
+            </View>
+          </View>
 
           {/* COLLAPSIBLE PERIOD COMPARISON ANALYTICS */}
           <Card style={styles.compCard}>
@@ -622,6 +658,13 @@ export function DashboardScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   container: { padding: 16, paddingBottom: 100 },
+  // Rendered off-screen (not visible, doesn't affect layout) purely so react-native-view-shot
+  // has a real mounted view to capture for the PDF report. Deliberately NOT using opacity: 0
+  // to hide it - combined with an off-screen position that alone made captureRef return a
+  // blank/partially-cropped bitmap on Android (a known react-native-view-shot pitfall: it
+  // skips/short-circuits drawing for zero-opacity views). Off-screen positioning alone is
+  // already enough to keep it invisible to the user.
+  offscreenCapture: { position: "absolute", top: -9999, left: -9999 },
   headerRow: {
     flexDirection: "column",
     gap: 8,
