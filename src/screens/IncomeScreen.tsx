@@ -5,8 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Modal,
-  Alert,
   ActivityIndicator,
 } from "react-native";
 import { Search, Edit2, Trash2 } from "lucide-react-native";
@@ -17,10 +15,12 @@ import {
 } from "../shared-types";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { useAppAlert } from "../context/AlertContext";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { SelectPicker } from "../components/ui/SelectPicker";
+import { AppModal } from "../components/ui/Modal";
 import { formatCurrency } from "../lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
@@ -29,6 +29,7 @@ export function IncomeScreen() {
   const { user } = useAuth();
   const userId = user?.id || "";
   const { theme } = useTheme();
+  const { showAlert } = useAppAlert();
   const queryClient = useQueryClient();
 
   // Form State
@@ -44,6 +45,7 @@ export function IncomeScreen() {
 
   // Edit Modal State
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   // Fetch Incomes
   const { data: incomes = [], isLoading } = useQuery({
@@ -64,7 +66,7 @@ export function IncomeScreen() {
   const handleAddIncome = async () => {
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) {
-      Alert.alert("Invalid Amount", "Please enter a valid income amount");
+      showAlert("Invalid Amount", "Please enter a valid income amount");
       return;
     }
 
@@ -80,13 +82,13 @@ export function IncomeScreen() {
 
       if (error) throw error;
 
-      Alert.alert("Success", "Income entry logged successfully!");
+      showAlert("Success", "Income entry logged successfully!");
       setAmount("");
       setDescription("");
       queryClient.invalidateQueries({ queryKey: ["mobile-incomes"] });
       queryClient.invalidateQueries({ queryKey: ["mobile-dashboard"] });
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to log income");
+      showAlert("Error", err.message || "Failed to log income");
     } finally {
       setIsSubmitting(false);
     }
@@ -94,7 +96,7 @@ export function IncomeScreen() {
 
   // Delete Mutation
   const handleDelete = (id: string) => {
-    Alert.alert("Confirm Delete", "Are you sure you want to delete this income entry?", [
+    showAlert("Confirm Delete", "Are you sure you want to delete this income entry?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
@@ -113,10 +115,11 @@ export function IncomeScreen() {
     if (!editingItem) return;
     const numAmount = parseFloat(editingItem.amount);
     if (isNaN(numAmount) || numAmount <= 0) {
-      Alert.alert("Invalid Amount", "Please enter a valid amount");
+      showAlert("Invalid Amount", "Please enter a valid amount");
       return;
     }
 
+    setIsUpdating(true);
     try {
       const { error } = await supabase
         .from("incomes")
@@ -133,7 +136,9 @@ export function IncomeScreen() {
       queryClient.invalidateQueries({ queryKey: ["mobile-incomes"] });
       queryClient.invalidateQueries({ queryKey: ["mobile-dashboard"] });
     } catch (err: any) {
-      Alert.alert("Update Error", err.message);
+      showAlert("Update Error", err.message);
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -254,49 +259,37 @@ export function IncomeScreen() {
       )}
 
       {/* Edit Modal */}
-      <Modal visible={editingItem !== null} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Edit Income Entry</Text>
-            {editingItem && (
-              <>
-                <Input
-                  label="Amount (USD)"
-                  value={String(editingItem.amount)}
-                  onChangeText={(val) => setEditingItem({ ...editingItem, amount: val })}
-                  keyboardType="numeric"
-                />
+      <AppModal
+        visible={editingItem !== null}
+        onClose={() => setEditingItem(null)}
+        title="Edit Income Entry"
+        onConfirm={handleUpdate}
+        confirmLabel="Save Changes"
+        confirmLoading={isUpdating}
+      >
+        {editingItem && (
+          <>
+            <Input
+              label="Amount (USD)"
+              value={String(editingItem.amount)}
+              onChangeText={(val) => setEditingItem({ ...editingItem, amount: val })}
+              keyboardType="numeric"
+            />
 
-                <Input
-                  label="Date"
-                  value={editingItem.date}
-                  onChangeText={(val) => setEditingItem({ ...editingItem, date: val })}
-                />
+            <Input
+              label="Date"
+              value={editingItem.date}
+              onChangeText={(val) => setEditingItem({ ...editingItem, date: val })}
+            />
 
-                <Input
-                  label="Description"
-                  value={editingItem.description || ""}
-                  onChangeText={(val) => setEditingItem({ ...editingItem, description: val })}
-                />
-
-                <View style={styles.modalBtnRow}>
-                  <Button
-                    title="Cancel"
-                    variant="outline"
-                    onPress={() => setEditingItem(null)}
-                    style={{ flex: 1, marginRight: 8 }}
-                  />
-                  <Button
-                    title="Save Changes"
-                    onPress={handleUpdate}
-                    style={{ flex: 1 }}
-                  />
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
+            <Input
+              label="Description"
+              value={editingItem.description || ""}
+              onChangeText={(val) => setEditingItem({ ...editingItem, description: val })}
+            />
+          </>
+        )}
+      </AppModal>
     </ScrollView>
   );
 }
@@ -320,8 +313,4 @@ const styles = StyleSheet.create({
   historyAmount: { fontSize: 15, fontWeight: "800" },
   actionsRow: { flexDirection: "row", gap: 12, marginTop: 8 },
   actionBtn: { padding: 4 },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: 20 },
-  modalContent: { borderRadius: 16, padding: 20, borderWidth: 1 },
-  modalTitle: { fontSize: 16, fontWeight: "700", marginBottom: 14 },
-  modalBtnRow: { flexDirection: "row", marginTop: 14 },
 });

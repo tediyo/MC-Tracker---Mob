@@ -1,13 +1,15 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, TouchableOpacity } from "react-native";
 import { supabase } from "../lib/supabase";
 import { useTheme } from "../context/ThemeContext";
+import { useAppAlert } from "../context/AlertContext";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 
 export function AuthScreen() {
   const { theme } = useTheme();
+  const { showAlert } = useAppAlert();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -15,7 +17,7 @@ export function AuthScreen() {
 
   const handleAuth = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert("Error", "Please enter both email and password");
+      showAlert("Error", "Please enter both email and password");
       return;
     }
 
@@ -27,7 +29,7 @@ export function AuthScreen() {
           password: password.trim(),
         });
         if (error) throw error;
-        Alert.alert("Success", "Account created successfully! You can now log in.");
+        showAlert("Success", "Account created successfully! You can now log in.");
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -36,7 +38,7 @@ export function AuthScreen() {
         if (error) throw error;
       }
     } catch (err: any) {
-      Alert.alert("Authentication Error", err.message || "An unexpected error occurred.");
+      showAlert("Authentication Error", err.message || "An unexpected error occurred.");
     } finally {
       setIsSignUp(false);
       setLoading(false);

@@ -1,17 +1,19 @@
 import React from "react";
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
 import { UserCheck, LogOut, Shield, Smartphone, Sun, Moon } from "lucide-react-native";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { useAppAlert } from "../context/AlertContext";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 
 export function ProfileScreen() {
   const { user, signOut } = useAuth();
   const { themeMode, theme, toggleTheme, setThemeMode } = useTheme();
+  const { showAlert } = useAppAlert();
 
   const handleSignOut = () => {
-    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+    showAlert("Sign Out", "Are you sure you want to sign out?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Sign Out",

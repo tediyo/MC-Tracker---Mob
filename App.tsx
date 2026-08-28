@@ -3,6 +3,7 @@ import { View, StatusBar } from "react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "./src/context/AuthContext";
 import { ThemeProvider } from "./src/context/ThemeContext";
+import { AlertProvider } from "./src/context/AlertContext";
 import { MainNavigator } from "./src/navigation/MainNavigator";
 import { ErrorBoundary } from "./src/components/ErrorBoundary";
 
@@ -21,10 +22,12 @@ export default function App() {
       <View style={{ flex: 1 }}>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
-            <AuthProvider>
-              <StatusBar barStyle="light-content" />
-              <MainNavigator />
-            </AuthProvider>
+            <AlertProvider>
+              <AuthProvider>
+                <StatusBar barStyle="light-content" />
+                <MainNavigator />
+              </AuthProvider>
+            </AlertProvider>
           </ThemeProvider>
         </QueryClientProvider>
       </View>
