@@ -55,6 +55,7 @@ export function DashboardScreen() {
   // PDF report generation - refs let react-native-view-shot capture these exact charts
   const pieChartRef = useRef<View>(null);
   const barChartRef = useRef<View>(null);
+  const incomeCostPieRef = useRef<View>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   // Timeframe switcher state
@@ -194,9 +195,9 @@ export function DashboardScreen() {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     try {
-      const [pieChartBase64, barChartBase64] = await Promise.all([
+      const [pieChartBase64, incomeCostPieBase64] = await Promise.all([
         captureRef(pieChartRef, { format: "png", quality: 0.9, result: "base64" }),
-        captureRef(barChartRef, { format: "png", quality: 0.9, result: "base64" }),
+        captureRef(incomeCostPieRef, { format: "png", quality: 0.9, result: "base64" }),
       ]);
 
       const html = buildOverviewReportHtml({
@@ -211,7 +212,7 @@ export function DashboardScreen() {
         fancyCost: dashboardData.fancyCost,
         extraCost: dashboardData.extraCost,
         pieChartBase64,
-        barChartBase64,
+        incomeCostPieBase64,
       });
 
       await RNPrint.print({ html });
@@ -413,6 +414,20 @@ export function DashboardScreen() {
               />
             </View>
           </Card>
+
+          {/* Not shown on screen - captured for the PDF report only, which uses a pie
+              chart here instead of the bar chart above (see handleDownloadReport). */}
+          <View style={styles.offscreenCapture} pointerEvents="none">
+            <View ref={incomeCostPieRef} collapsable={false} style={{ backgroundColor: theme.card }}>
+              <SimplePieChart
+                data={[
+                  { label: "Income", value: dashboardData?.totalIncome || 0, color: theme.primary },
+                  { label: "Costs", value: dashboardData?.totalCosts || 0, color: "#3b82f6" },
+                ]}
+                showBalances={showBalances}
+              />
+            </View>
+          </View>
 
           {/* COLLAPSIBLE PERIOD COMPARISON ANALYTICS */}
           <Card style={styles.compCard}>
@@ -623,6 +638,9 @@ export function DashboardScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   container: { padding: 16, paddingBottom: 100 },
+  // Rendered off-screen (not visible, doesn't affect layout) purely so react-native-view-shot
+  // has a real mounted view to capture for the PDF report.
+  offscreenCapture: { position: "absolute", top: -9999, left: -9999, opacity: 0 },
   headerRow: {
     flexDirection: "column",
     gap: 8,
