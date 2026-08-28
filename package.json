@@ -4,27 +4,29 @@
   "private": true,
   "main": "index.js",
   "scripts": {
-    "start": "expo start",
-    "android": "expo run:android",
-    "ios": "expo run:ios",
-    "web": "expo start --web"
+    "start": "react-native start",
+    "android": "react-native run-android"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "1.23.1",
     "@supabase/supabase-js": "^2.45.1",
     "@tanstack/react-query": "^5.51.15",
     "date-fns": "^3.6.0",
-    "expo": "~51.0.0",
-    "expo-status-bar": "~1.12.1",
     "lucide-react-native": "^0.428.0",
     "react": "18.3.1",
     "react-native": "0.74.5",
     "react-native-svg": "15.2.0",
     "react-native-url-polyfill": "^2.0.0",
-    "@babel/runtime": "^7.24.0"
+    "@babel/runtime": "^7.24.0",
+    "zod": "^3.23.8",
+    "@react-native/assets-registry": "0.74.87"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",
+    "@react-native/metro-config": "0.74.87",
+    "@react-native/babel-preset": "0.74.87",
+    "@react-native/typescript-config": "0.74.87",
+    "react-native-dotenv": "^3.4.11",
     "@types/react": "^19.0.4",
     "typescript": "^5.7.3"
   }

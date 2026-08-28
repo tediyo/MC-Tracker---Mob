@@ -60,9 +60,9 @@ export function MainNavigator() {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.screenContainer}>{renderScreen()}</View>
 
-      {/* Floating Theme-Specific Bottom Nav Bar with Emerald Green Icons */}
-      <View style={styles.floatingNavWrapper}>
-        {/* Main 4-Tab Pill Container */}
+      {/* Floating Translucent Bottom Nav Bar */}
+      <View style={styles.floatingNavWrapper} pointerEvents="box-none">
+        {/* Main 4-Tab Translucent Pill Container */}
         <View
           style={[
             styles.mainNavPill,
@@ -84,7 +84,6 @@ export function MainNavigator() {
                 onPress={() => setActiveTab(tab.type)}
                 activeOpacity={0.7}
               >
-                {/* Emerald Green Icon */}
                 <Icon
                   size={22}
                   color={theme.primary}
@@ -139,7 +138,6 @@ const styles = StyleSheet.create({
   },
   screenContainer: {
     flex: 1,
-    paddingBottom: 85,
   },
   floatingNavWrapper: {
     position: "absolute",
@@ -149,6 +147,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    backgroundColor: "transparent",
+    zIndex: 99,
+    elevation: 10,
   },
   mainNavPill: {
     flex: 1,

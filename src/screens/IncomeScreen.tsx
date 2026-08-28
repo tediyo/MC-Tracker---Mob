@@ -14,7 +14,7 @@ import {
   INCOME_SOURCE_TYPES,
   INCOME_SOURCE_TYPE_LABELS,
   type IncomeSourceType,
-} from "@mc-tracker/shared-types";
+} from "../shared-types";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { Card } from "../components/ui/Card";

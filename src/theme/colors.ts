@@ -15,7 +15,7 @@ export const darkColors = {
   info: "#3b82f6",
   border: "#27272a",
   inputBg: "#121212",
-  pillBg: "#18181b",
+  pillBg: "rgba(24, 24, 27, 0.82)", // Translucent floating glassmorphism for dark mode
   pillActiveText: "#ffffff",
   pillInactiveText: "#71717a",
 };
@@ -37,7 +37,7 @@ export const lightColors = {
   info: "#3b82f6",
   border: "#e2e8f0",
   inputBg: "#f1f5f9",
-  pillBg: "#ffffff",
+  pillBg: "rgba(255, 255, 255, 0.85)", // Translucent floating glassmorphism for light mode
   pillActiveText: "#09090b",
   pillInactiveText: "#94a3b8",
 };

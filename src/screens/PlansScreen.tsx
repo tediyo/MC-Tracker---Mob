@@ -14,7 +14,7 @@ import {
   ETHIOPIAN_MONTHS,
   getEthiopianDate,
   type PlanRow,
-} from "@mc-tracker/shared-types";
+} from "../shared-types";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { Card } from "../components/ui/Card";

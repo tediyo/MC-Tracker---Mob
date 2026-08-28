@@ -17,7 +17,7 @@ import {
   CATEGORY_SUBCATEGORY_MAP,
   type CostCategory,
   type CostSubcategory,
-} from "@mc-tracker/shared-types";
+} from "../shared-types";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { Card } from "../components/ui/Card";
