@@ -3,7 +3,7 @@ import {
   getDaysInEthiopianMonth,
   ETHIOPIAN_MONTHS,
   type CostCategory,
-} from "@mc-tracker/shared-types";
+} from "../shared-types";
 
 export type ComparisonMode = "monthly" | "weekly" | "yearly";
 

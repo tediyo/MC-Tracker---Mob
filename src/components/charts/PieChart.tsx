@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import Svg, { Path, G, Circle } from "react-native-svg";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import { formatCurrency } from "../../lib/utils";
 
 export interface PieChartSlice {
@@ -17,12 +17,13 @@ interface PieChartProps {
 }
 
 export function SimplePieChart({ data, size = 160, showBalances = true }: PieChartProps) {
+  const { theme } = useTheme();
   const total = data.reduce((sum, item) => sum + item.value, 0);
 
   if (total === 0) {
     return (
       <View style={[styles.emptyContainer, { height: size }]}>
-        <Text style={styles.emptyText}>No expenses logged for this period</Text>
+        <Text style={[styles.emptyText, { color: theme.textMuted }]}>No expenses logged for this period</Text>
       </View>
     );
   }
@@ -76,8 +77,8 @@ export function SimplePieChart({ data, size = 160, showBalances = true }: PieCha
           </G>
         </Svg>
         <View style={styles.centerTextContainer}>
-          <Text style={styles.totalLabel}>Total Costs</Text>
-          <Text style={styles.totalValue}>
+          <Text style={[styles.totalLabel, { color: theme.textMuted }]}>Total Costs</Text>
+          <Text style={[styles.totalValue, { color: theme.textPrimary }]}>
             {showBalances ? formatCurrency(total) : "ETB ••••••"}
           </Text>
         </View>
@@ -88,12 +89,12 @@ export function SimplePieChart({ data, size = 160, showBalances = true }: PieCha
         {data.map((slice, idx) => {
           const percent = total > 0 ? ((slice.value / total) * 100).toFixed(1) : "0.0";
           return (
-            <View key={idx} style={styles.legendItem}>
+            <View key={idx} style={[styles.legendItem, { borderBottomColor: theme.border }]}>
               <View style={styles.legendLeft}>
                 <View style={[styles.colorDot, { backgroundColor: slice.color }]} />
-                <Text style={styles.legendLabel}>{slice.label}</Text>
+                <Text style={[styles.legendLabel, { color: theme.textSecondary }]}>{slice.label}</Text>
               </View>
-              <Text style={styles.legendValue}>
+              <Text style={[styles.legendValue, { color: theme.textPrimary }]}>
                 {showBalances ? formatCurrency(slice.value) : "ETB ••••••"} ({percent}%)
               </Text>
             </View>
@@ -115,7 +116,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 12,
-    color: colors.textMuted,
   },
   centerTextContainer: {
     position: "absolute",
@@ -124,12 +124,10 @@ const styles = StyleSheet.create({
   totalLabel: {
     fontSize: 10,
     fontWeight: "600",
-    color: colors.textMuted,
   },
   totalValue: {
     fontSize: 13,
     fontWeight: "800",
-    color: colors.textPrimary,
     marginTop: 2,
   },
   legendContainer: {
@@ -143,7 +141,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 4,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   legendLeft: {
     flexDirection: "row",
@@ -158,11 +155,9 @@ const styles = StyleSheet.create({
   legendLabel: {
     fontSize: 12,
     fontWeight: "600",
-    color: colors.textSecondary,
   },
   legendValue: {
     fontSize: 12,
     fontWeight: "700",
-    color: colors.textPrimary,
   },
 });

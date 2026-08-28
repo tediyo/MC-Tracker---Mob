@@ -5,8 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Modal,
-  Alert,
   ActivityIndicator,
 } from "react-native";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
@@ -14,12 +12,14 @@ import {
   ETHIOPIAN_MONTHS,
   getEthiopianDate,
   type PlanRow,
-} from "@mc-tracker/shared-types";
+} from "../shared-types";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { useAppAlert } from "../context/AlertContext";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
+import { AppModal } from "../components/ui/Modal";
 import { formatCurrency } from "../lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
@@ -28,6 +28,7 @@ export function PlansScreen() {
   const { user } = useAuth();
   const userId = user?.id || "";
   const { theme } = useTheme();
+  const { showAlert } = useAppAlert();
   const queryClient = useQueryClient();
 
   const currentEth = getEthiopianDate(new Date());
@@ -69,7 +70,7 @@ export function PlansScreen() {
     const goal = parseFloat(savingsGoalInput);
 
     if (isNaN(limit) || limit < 0 || isNaN(goal) || goal < 0) {
-      Alert.alert("Invalid Inputs", "Please enter valid non-negative numbers for limits and goals.");
+      showAlert("Invalid Inputs", "Please enter valid non-negative numbers for limits and goals.");
       return;
     }
 
@@ -96,12 +97,12 @@ export function PlansScreen() {
         if (error) throw error;
       }
 
-      Alert.alert("Success", "Budget plan saved!");
+      showAlert("Success", "Budget plan saved!");
       setActiveMonth(null);
       queryClient.invalidateQueries({ queryKey: ["mobile-plans"] });
       queryClient.invalidateQueries({ queryKey: ["mobile-dashboard"] });
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to save plan");
+      showAlert("Error", err.message || "Failed to save plan");
     } finally {
       setIsSubmitting(false);
     }
@@ -118,7 +119,7 @@ export function PlansScreen() {
       <View style={[styles.yearNavCard, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
         <TouchableOpacity
           onPress={() => setSelectedYear(selectedYear - 1)}
-          style={[styles.navBtn, { backgroundColor: theme.primaryLight }]}
+          style={[styles.navBtn, { backgroundColor: "transparent" }]}
         >
           <ChevronLeft size={20} color={theme.primary} />
         </TouchableOpacity>
@@ -130,7 +131,7 @@ export function PlansScreen() {
 
         <TouchableOpacity
           onPress={() => setSelectedYear(selectedYear + 1)}
-          style={[styles.navBtn, { backgroundColor: theme.primaryLight }]}
+          style={[styles.navBtn, { backgroundColor: "transparent" }]}
         >
           <ChevronRight size={20} color={theme.primary} />
         </TouchableOpacity>
@@ -200,47 +201,32 @@ export function PlansScreen() {
       )}
 
       {/* Create / Edit Plan Modal */}
-      <Modal visible={activeMonth !== null} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
-              {planByMonth.get(activeMonth || 1) ? "Edit Budget Plan" : "Create Budget Plan"} -{" "}
-              {ETHIOPIAN_MONTHS[(activeMonth || 1) - 1]?.nameEn} {selectedYear} E.C.
-            </Text>
+      <AppModal
+        visible={activeMonth !== null}
+        onClose={() => setActiveMonth(null)}
+        title={`${planByMonth.get(activeMonth || 1) ? "Edit Budget Plan" : "Create Budget Plan"} - ${
+          ETHIOPIAN_MONTHS[(activeMonth || 1) - 1]?.nameEn
+        } ${selectedYear} E.C.`}
+        onConfirm={handleSavePlan}
+        confirmLabel="Save Plan"
+        confirmLoading={isSubmitting}
+      >
+        <Input
+          label="Target Cost Limit (USD)"
+          placeholder="e.g. 500.00"
+          value={costLimitInput}
+          onChangeText={setCostLimitInput}
+          keyboardType="numeric"
+        />
 
-            <Input
-              label="Target Cost Limit (USD)"
-              placeholder="e.g. 500.00"
-              value={costLimitInput}
-              onChangeText={setCostLimitInput}
-              keyboardType="numeric"
-            />
-
-            <Input
-              label="Target Savings Goal (USD)"
-              placeholder="e.g. 200.00"
-              value={savingsGoalInput}
-              onChangeText={setSavingsGoalInput}
-              keyboardType="numeric"
-            />
-
-            <View style={styles.modalBtnRow}>
-              <Button
-                title="Cancel"
-                variant="outline"
-                onPress={() => setActiveMonth(null)}
-                style={{ flex: 1, marginRight: 8 }}
-              />
-              <Button
-                title="Save Plan"
-                onPress={handleSavePlan}
-                loading={isSubmitting}
-                style={{ flex: 1 }}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
+        <Input
+          label="Target Savings Goal (USD)"
+          placeholder="e.g. 200.00"
+          value={savingsGoalInput}
+          onChangeText={setSavingsGoalInput}
+          keyboardType="numeric"
+        />
+      </AppModal>
     </ScrollView>
   );
 }
@@ -269,14 +255,10 @@ const styles = StyleSheet.create({
   currentBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   currentBadgeText: { fontSize: 9, fontWeight: "900" },
   planDetails: { gap: 8 },
-  detailRow: { flexDirection: "row", alignItems: "center", justifyBetween: "space-between", padding: 8, borderRadius: 8 },
+  detailRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 8, borderRadius: 8 },
   detailLabel: { fontSize: 12, flex: 1 },
   detailVal: { fontSize: 13, fontWeight: "700" },
   noPlanBox: { alignItems: "center", paddingVertical: 8 },
   noPlanText: { fontSize: 12, marginBottom: 8 },
   actionBtn: { marginTop: 6 },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: 20 },
-  modalContent: { borderRadius: 16, padding: 20, borderWidth: 1 },
-  modalTitle: { fontSize: 16, fontWeight: "700", marginBottom: 14 },
-  modalBtnRow: { flexDirection: "row", marginTop: 14 },
 });

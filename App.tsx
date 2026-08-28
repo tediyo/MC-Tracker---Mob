@@ -1,9 +1,11 @@
 import React from "react";
-import { StatusBar } from "expo-status-bar";
+import { View, StatusBar } from "react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "./src/context/AuthContext";
 import { ThemeProvider } from "./src/context/ThemeContext";
+import { AlertProvider } from "./src/context/AlertContext";
 import { MainNavigator } from "./src/navigation/MainNavigator";
+import { ErrorBoundary } from "./src/components/ErrorBoundary";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -16,13 +18,19 @@ const queryClient = new QueryClient({
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <AuthProvider>
-          <StatusBar style="auto" />
-          <MainNavigator />
-        </AuthProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <View style={{ flex: 1 }}>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider>
+            <AlertProvider>
+              <AuthProvider>
+                <StatusBar barStyle="light-content" />
+                <MainNavigator />
+              </AuthProvider>
+            </AlertProvider>
+          </ThemeProvider>
+        </QueryClientProvider>
+      </View>
+    </ErrorBoundary>
   );
 }

@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import Svg, { Rect, Line, Text as SvgText, G } from "react-native-svg";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import { formatCurrency } from "../../lib/utils";
 
 export interface BarChartGroup {
@@ -22,9 +22,11 @@ interface BarChartProps {
 export function SimpleBarChart({
   data,
   height = 180,
-  colorA = colors.primary,
+  colorA,
   colorB = "#3b82f6",
 }: BarChartProps) {
+  const { theme } = useTheme();
+  const resolvedColorA = colorA ?? theme.primary;
   if (!data || data.length === 0) return null;
 
   const maxValue = Math.max(
@@ -47,7 +49,7 @@ export function SimpleBarChart({
           y1={chartHeight}
           x2={chartWidth}
           y2={chartHeight}
-          stroke={colors.cardBorder}
+          stroke={theme.cardBorder}
           strokeWidth={1}
         />
 
@@ -70,7 +72,7 @@ export function SimpleBarChart({
                 y={yA}
                 width={barWidth}
                 height={Math.max(heightA, 2)}
-                fill={colorA}
+                fill={resolvedColorA}
                 rx={4}
               />
 
@@ -91,7 +93,7 @@ export function SimpleBarChart({
                 x={xGroup + groupWidth * 0.3}
                 y={chartHeight + 15}
                 fontSize={10}
-                fill={colors.textMuted}
+                fill={theme.textMuted}
                 textAnchor="middle"
               >
                 {group.label}

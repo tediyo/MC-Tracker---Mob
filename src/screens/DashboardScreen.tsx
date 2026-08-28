@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -17,33 +17,45 @@ import {
   EyeOff,
   Sun,
   Moon,
+  Download,
 } from "lucide-react-native";
 import {
   ETHIOPIAN_MONTHS,
   getEthiopianDate,
   COST_CATEGORY_LABELS,
   type TimeFrame,
-} from "@mc-tracker/shared-types";
+} from "../shared-types";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { useAppAlert } from "../context/AlertContext";
 import { Card } from "../components/ui/Card";
 import { SelectPicker } from "../components/ui/SelectPicker";
 import { SimpleBarChart } from "../components/charts/BarChart";
+import { SimpleLineChart } from "../components/charts/LineChart";
 import { SimplePieChart } from "../components/charts/PieChart";
 import { formatCurrency } from "../lib/utils";
+import { buildOverviewReportHtml } from "../lib/reportGenerator";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
 import { getComparisonData, type ComparisonMode } from "../../src/lib/comparisonHelper";
+import { captureRef } from "react-native-view-shot";
+import RNPrint from "react-native-print";
 
 export function DashboardScreen() {
   const { user } = useAuth();
   const userId = user?.id || "";
   const { themeMode, theme, toggleTheme } = useTheme();
+  const { showAlert } = useAppAlert();
 
   const currentEth = useMemo(() => getEthiopianDate(new Date()), []);
 
   // Balance Privacy Visibility Toggle
   const [showBalances, setShowBalances] = useState<boolean>(true);
+
+  // PDF report generation - refs let react-native-view-shot capture these exact charts
+  const pieChartRef = useRef<View>(null);
+  const barChartRef = useRef<View>(null);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   // Timeframe switcher state
   const [timeframe, setTimeframe] = useState<TimeFrame>("monthly");
@@ -170,6 +182,46 @@ export function DashboardScreen() {
 
   const monthName = ETHIOPIAN_MONTHS[refMonth - 1]?.nameEn || `Month ${refMonth}`;
 
+  const handleDownloadReport = async () => {
+    if (!dashboardData) return;
+    setIsGeneratingReport(true);
+    // The report always shows real numbers (see reportGenerator.ts) - if balances are
+    // currently hidden on screen, the captured chart *images* would otherwise still bake
+    // in the "••••••" mask. Reveal them for the capture, then restore afterward.
+    const wasHidden = !showBalances;
+    if (wasHidden) {
+      setShowBalances(true);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    try {
+      const [pieChartBase64, barChartBase64] = await Promise.all([
+        captureRef(pieChartRef, { format: "png", quality: 0.9, result: "base64" }),
+        captureRef(barChartRef, { format: "png", quality: 0.9, result: "base64" }),
+      ]);
+
+      const html = buildOverviewReportHtml({
+        periodLabel: `${monthName} ${refYear} E.C.`,
+        totalIncome: dashboardData.totalIncome,
+        totalCosts: dashboardData.totalCosts,
+        netProfitLoss: dashboardData.netProfitLoss,
+        costLimit: dashboardData.costLimit,
+        costVariance: dashboardData.costVariance,
+        basicCost: dashboardData.basicCost,
+        fancyCost: dashboardData.fancyCost,
+        extraCost: dashboardData.extraCost,
+        pieChartBase64,
+        barChartBase64,
+      });
+
+      await RNPrint.print({ html });
+    } catch (err: any) {
+      showAlert("Error", err.message || "Failed to generate report");
+    } finally {
+      if (wasHidden) setShowBalances(false);
+      setIsGeneratingReport(false);
+    }
+  };
+
   return (
     <ScrollView
       style={[styles.flex, { backgroundColor: theme.background }]}
@@ -205,6 +257,19 @@ export function DashboardScreen() {
             )}
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={[styles.actionIconBtn, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}
+            onPress={handleDownloadReport}
+            disabled={isGeneratingReport || isLoading}
+            activeOpacity={0.7}
+          >
+            {isGeneratingReport ? (
+              <ActivityIndicator size="small" color={theme.primary} />
+            ) : (
+              <Download size={18} color={theme.primary} />
+            )}
+          </TouchableOpacity>
+
           <View style={[styles.timeframeContainer, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
             {(["daily", "weekly", "monthly", "yearly"] as TimeFrame[]).map((tf) => (
               <TouchableOpacity
@@ -230,7 +295,7 @@ export function DashboardScreen() {
       {/* Ethiopian Date Navigation */}
       <View style={[styles.dateNavRow, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
         <TouchableOpacity
-          style={[styles.navBtn, { backgroundColor: theme.primaryLight }]}
+          style={[styles.navBtn, { backgroundColor: "transparent" }]}
           onPress={() => {
             if (refMonth > 1) setRefMonth(refMonth - 1);
             else {
@@ -247,7 +312,7 @@ export function DashboardScreen() {
         </Text>
 
         <TouchableOpacity
-          style={[styles.navBtn, { backgroundColor: theme.primaryLight }]}
+          style={[styles.navBtn, { backgroundColor: "transparent" }]}
           onPress={() => {
             if (refMonth < 13) setRefMonth(refMonth + 1);
             else {
@@ -320,28 +385,32 @@ export function DashboardScreen() {
           {/* Category Donut Chart */}
           <Card>
             <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Category Expense Proportions</Text>
-            <SimplePieChart
-              data={[
-                { label: "Basic", value: dashboardData?.basicCost || 0, color: theme.primary },
-                { label: "Fancy", value: dashboardData?.fancyCost || 0, color: "#f59e0b" },
-                { label: "Extra", value: dashboardData?.extraCost || 0, color: "#3b82f6" },
-              ]}
-              showBalances={showBalances}
-            />
+            <View ref={pieChartRef} collapsable={false} style={{ backgroundColor: theme.card }}>
+              <SimplePieChart
+                data={[
+                  { label: "Basic", value: dashboardData?.basicCost || 0, color: theme.primary },
+                  { label: "Fancy", value: dashboardData?.fancyCost || 0, color: "#f59e0b" },
+                  { label: "Extra", value: dashboardData?.extraCost || 0, color: "#3b82f6" },
+                ]}
+                showBalances={showBalances}
+              />
+            </View>
           </Card>
 
           {/* Income vs Expense Overview */}
           <Card>
             <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Income vs Expense Overview</Text>
-            <SimpleBarChart
-              data={[
-                { label: "Income", valueA: dashboardData?.totalIncome || 0 },
-                { label: "Costs", valueA: dashboardData?.totalCosts || 0 },
-                { label: "Net", valueA: Math.max(dashboardData?.netProfitLoss || 0, 0) },
-              ]}
-              height={150}
-              colorA={theme.primary}
-            />
+            <View ref={barChartRef} collapsable={false} style={{ backgroundColor: theme.card }}>
+              <SimpleBarChart
+                data={[
+                  { label: "Income", valueA: dashboardData?.totalIncome || 0 },
+                  { label: "Costs", valueA: dashboardData?.totalCosts || 0 },
+                  { label: "Net", valueA: Math.max(dashboardData?.netProfitLoss || 0, 0) },
+                ]}
+                height={150}
+                colorA={theme.primary}
+              />
+            </View>
           </Card>
 
           {/* COLLAPSIBLE PERIOD COMPARISON ANALYTICS */}
@@ -353,9 +422,7 @@ export function DashboardScreen() {
             >
               <View>
                 <Text style={[styles.compTitle, { color: theme.textPrimary }]}>Period Comparison Analytics</Text>
-                <Text style={[styles.compSubtitle, { color: theme.textMuted }]}>
-                  Compare side-by-side ({compMode.toUpperCase()})
-                </Text>
+                
               </View>
               {isComparisonOpen ? (
                 <ChevronUp size={20} color={theme.primary} />
@@ -517,7 +584,7 @@ export function DashboardScreen() {
 
                     {/* Side by Side Chart */}
                     <Text style={[styles.chartTitle, { color: theme.textSecondary }]}>Side-by-Side Comparison</Text>
-                    <SimpleBarChart
+                    <SimpleLineChart
                       data={[
                         {
                           label: "Income",
@@ -538,6 +605,8 @@ export function DashboardScreen() {
                       height={160}
                       colorA={theme.primary}
                       colorB="#3b82f6"
+                      labelA={compData.summaryA.label}
+                      labelB={compData.summaryB.label}
                     />
                   </View>
                 ) : null}
