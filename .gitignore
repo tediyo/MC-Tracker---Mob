@@ -12,6 +12,8 @@ android/.gradle/
 android/app/build/
 android/build/
 android/app/src/main/assets/index.android.bundle
+android/local.properties
+android/.idea/
 ios/Pods/
 ios/build/
 *.xcworkspace
