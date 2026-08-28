@@ -7,15 +7,19 @@ import { IncomeScreen } from "../screens/IncomeScreen";
 import { CostsScreen } from "../screens/CostsScreen";
 import { PlansScreen } from "../screens/PlansScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
+import { HistoryScreen, type HistoryTab } from "../screens/HistoryScreen";
 import { useAuth } from "../context/AuthContext";
 import { AuthScreen } from "../screens/AuthScreen";
 
-export type TabType = "dashboard" | "income" | "costs" | "plans" | "profile";
+export type TabType = "dashboard" | "income" | "costs" | "plans" | "profile" | "history";
 
 export function MainNavigator() {
   const { session, loading } = useAuth();
   const { themeMode, theme } = useTheme();
   const [activeTab, setActiveTab] = useState<TabType>("dashboard");
+  // Which tab History was opened from, and (as HistoryScreen's own initial toggle) which
+  // section it should open on - "history" isn't a bottom-nav tab itself.
+  const [historySource, setHistorySource] = useState<HistoryTab>("income");
 
   const isDark = themeMode === "dark";
 
@@ -33,16 +37,23 @@ export function MainNavigator() {
     return <AuthScreen />;
   }
 
+  const openHistory = (source: HistoryTab) => {
+    setHistorySource(source);
+    setActiveTab("history");
+  };
+
   const renderScreen = () => {
     switch (activeTab) {
       case "income":
-        return <IncomeScreen />;
+        return <IncomeScreen onViewHistory={() => openHistory("income")} />;
       case "costs":
-        return <CostsScreen />;
+        return <CostsScreen onViewHistory={() => openHistory("costs")} />;
       case "plans":
         return <PlansScreen />;
       case "profile":
         return <ProfileScreen />;
+      case "history":
+        return <HistoryScreen initialTab={historySource} onBack={() => setActiveTab(historySource)} />;
       case "dashboard":
       default:
         return <DashboardScreen />;

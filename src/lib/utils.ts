@@ -1,11 +1,12 @@
-import { ETHIOPIAN_MONTHS, getEthiopianDate } from "../shared-types";
+import { getEthiopianDate } from "../shared-types";
 
 /** A Gregorian ISO date ("YYYY-MM-DD"), formatted as the Ethiopian calendar date it
- * represents - e.g. for display in history lists, next to the Ethiopian date picker. */
+ * represents - e.g. for display in history lists, next to the Ethiopian date picker.
+ * Compact numeric MM/DD/YYYY rather than a spelled-out month name. */
 export function formatEthiopianDate(isoDate: string): string {
   const eth = getEthiopianDate(isoDate);
-  const monthName = ETHIOPIAN_MONTHS[eth.month - 1]?.nameEn || eth.month;
-  return `${monthName} ${eth.day}, ${eth.year} E.C.`;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(eth.month)}/${pad(eth.day)}/${eth.year}`;
 }
 
 export function formatCurrency(amount: number): string {

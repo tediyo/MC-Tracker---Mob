@@ -1,13 +1,6 @@
 import React, { useState, useMemo } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-} from "react-native";
-import { Search, Edit2, Trash2 } from "lucide-react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
+import { ChevronRight } from "lucide-react-native";
 import {
   COST_CATEGORIES,
   COST_CATEGORY_LABELS,
@@ -23,13 +16,18 @@ import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { SelectPicker } from "../components/ui/SelectPicker";
-import { AppModal } from "../components/ui/Modal";
 import { EthiopianDatePicker } from "../components/ui/EthiopianDatePicker";
 import { formatCurrency, formatEthiopianDate } from "../lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
 
-export function CostsScreen() {
+const RECENT_COUNT = 5;
+
+interface CostsScreenProps {
+  onViewHistory: () => void;
+}
+
+export function CostsScreen({ onViewHistory }: CostsScreenProps) {
   const { user } = useAuth();
   const userId = user?.id || "";
   const { theme } = useTheme();
@@ -45,14 +43,6 @@ export function CostsScreen() {
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Filter State
-  const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
-
-  // Edit Modal State
-  const [editingItem, setEditingItem] = useState<any>(null);
-  const [isUpdating, setIsUpdating] = useState(false);
-
   // Available subcategories based on chosen category
   const availableSubcategories = useMemo(() => {
     return CATEGORY_SUBCATEGORY_MAP[category] || [];
@@ -66,7 +56,7 @@ export function CostsScreen() {
     }
   };
 
-  // Fetch Costs
+  // Same query/cache the full History screen uses - here we only show the first few.
   const { data: costs = [], isLoading } = useQuery({
     queryKey: ["mobile-costs", userId],
     queryFn: async () => {
@@ -80,6 +70,7 @@ export function CostsScreen() {
     },
     enabled: !!userId,
   });
+  const recentCosts = costs.slice(0, RECENT_COUNT);
 
   // Add Cost Handler with Mandatory Reason Validation
   const handleAddCost = async () => {
@@ -119,74 +110,6 @@ export function CostsScreen() {
       setIsSubmitting(false);
     }
   };
-
-  // Delete Cost Handler
-  const handleDelete = (id: string) => {
-    showAlert("Confirm Delete", "Are you sure you want to delete this cost entry?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          await supabase.from("costs").delete().eq("id", id);
-          queryClient.invalidateQueries({ queryKey: ["mobile-costs"] });
-          queryClient.invalidateQueries({ queryKey: ["mobile-dashboard"] });
-        },
-      },
-    ]);
-  };
-
-  // Edit Update Handler
-  const handleUpdate = async () => {
-    if (!editingItem) return;
-    const numAmount = parseFloat(editingItem.amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
-      showAlert("Invalid Amount", "Please enter a valid amount");
-      return;
-    }
-
-    if (editingItem.subcategory === "other" && !editingItem.description?.trim()) {
-      showAlert("Reason Required", "Please specify a reason when selecting 'Other'.");
-      return;
-    }
-
-    setIsUpdating(true);
-    try {
-      const { error } = await supabase
-        .from("costs")
-        .update({
-          amount: numAmount,
-          date: editingItem.date,
-          category: editingItem.category,
-          subcategory: editingItem.subcategory,
-          description: editingItem.description,
-        })
-        .eq("id", editingItem.id);
-
-      if (error) throw error;
-
-      setEditingItem(null);
-      queryClient.invalidateQueries({ queryKey: ["mobile-costs"] });
-      queryClient.invalidateQueries({ queryKey: ["mobile-dashboard"] });
-    } catch (err: any) {
-      showAlert("Update Error", err.message);
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const filteredCosts = costs.filter((r) => {
-    if (categoryFilter !== "all" && r.category !== categoryFilter) return false;
-    if (!search.trim()) return true;
-    const term = search.toLowerCase();
-    return (
-      r.description?.toLowerCase().includes(term) ||
-      COST_CATEGORY_LABELS[r.category as CostCategory]?.toLowerCase().includes(term) ||
-      COST_SUBCATEGORY_LABELS[r.subcategory as CostSubcategory]?.toLowerCase().includes(term) ||
-      r.date.includes(term) ||
-      r.amount.toString().includes(term)
-    );
-  });
 
   const categoryOptions = COST_CATEGORIES.map((c) => ({
     label: COST_CATEGORY_LABELS[c],
@@ -254,32 +177,21 @@ export function CostsScreen() {
         />
       </Card>
 
-      {/* History Header & Search/Filter */}
-      <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Expense History</Text>
-
-      {/* <Input
-        placeholder="Search expenses..."
-        value={search}
-        onChangeText={setSearch}
-        containerStyle={{ marginBottom: 8 }}
-      /> */}
-
-      <SelectPicker
-        label="Filter Category"
-        options={[
-          { label: "All Categories", value: "all" },
-          ...categoryOptions,
-        ]}
-        selectedValue={categoryFilter}
-        onValueChange={setCategoryFilter}
-      />
+      {/* Recent Transactions */}
+      <View style={styles.sectionHeaderRow}>
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Recent Transactions</Text>
+        <TouchableOpacity style={styles.viewHistoryLink} onPress={onViewHistory}>
+          <Text style={[styles.viewHistoryText, { color: theme.primary }]}>View Full History</Text>
+          <ChevronRight size={16} color={theme.primary} />
+        </TouchableOpacity>
+      </View>
 
       {isLoading ? (
         <ActivityIndicator color={theme.primary} style={{ marginVertical: 20 }} />
-      ) : filteredCosts.length === 0 ? (
+      ) : recentCosts.length === 0 ? (
         <Text style={[styles.emptyText, { color: theme.textMuted }]}>No expense entries logged yet.</Text>
       ) : (
-        filteredCosts.map((item) => (
+        recentCosts.map((item) => (
           <Card key={item.id} style={styles.historyCard}>
             <View style={styles.historyRow}>
               <View style={styles.historyLeft}>
@@ -301,64 +213,13 @@ export function CostsScreen() {
                 ) : null}
               </View>
 
-              <View style={styles.historyRight}>
-                <Text style={[styles.historyAmount, { color: theme.textPrimary }]}>
-                  {formatCurrency(Number(item.amount))}
-                </Text>
-
-                <View style={styles.actionsRow}>
-                  <TouchableOpacity
-                    onPress={() => setEditingItem(item)}
-                    style={styles.actionBtn}
-                  >
-                    <Edit2 size={16} color={theme.primary} />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => handleDelete(item.id)}
-                    style={styles.actionBtn}
-                  >
-                    <Trash2 size={16} color={theme.danger} />
-                  </TouchableOpacity>
-                </View>
-              </View>
+              <Text style={[styles.historyAmount, { color: theme.textPrimary }]}>
+                {formatCurrency(Number(item.amount))}
+              </Text>
             </View>
           </Card>
         ))
       )}
-
-      {/* Edit Modal */}
-      <AppModal
-        visible={editingItem !== null}
-        onClose={() => setEditingItem(null)}
-        title="Edit Expense Entry"
-        onConfirm={handleUpdate}
-        confirmLabel="Save Changes"
-        confirmLoading={isUpdating}
-      >
-        {editingItem && (
-          <>
-            <Input
-              label="Amount (USD)"
-              value={String(editingItem.amount)}
-              onChangeText={(val) => setEditingItem({ ...editingItem, amount: val })}
-              keyboardType="numeric"
-            />
-
-            <EthiopianDatePicker
-              label="Date"
-              value={editingItem.date}
-              onChange={(val) => setEditingItem({ ...editingItem, date: val })}
-            />
-
-            <Input
-              label={editingItem.subcategory === "other" ? "Reason (Required) *" : "Description"}
-              value={editingItem.description || ""}
-              onChangeText={(val) => setEditingItem({ ...editingItem, description: val })}
-            />
-          </>
-        )}
-      </AppModal>
     </ScrollView>
   );
 }
@@ -369,7 +230,10 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontWeight: "800", marginBottom: 14 },
   formCard: { padding: 16, marginBottom: 20 },
   formTitle: { fontSize: 16, fontWeight: "700", marginBottom: 14 },
-  sectionTitle: { fontSize: 16, fontWeight: "700", marginBottom: 10 },
+  sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+  sectionTitle: { fontSize: 16, fontWeight: "700" },
+  viewHistoryLink: { flexDirection: "row", alignItems: "center", gap: 2 },
+  viewHistoryText: { fontSize: 12, fontWeight: "700" },
   emptyText: { textAlign: "center", fontSize: 13, marginVertical: 20 },
   historyCard: { padding: 14, marginBottom: 10 },
   historyRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
@@ -380,8 +244,5 @@ const styles = StyleSheet.create({
   catBadgeText: { fontSize: 10, fontWeight: "700" },
   subText: { fontSize: 11, fontWeight: "600" },
   historyDesc: { fontSize: 12, marginTop: 2 },
-  historyRight: { alignItems: "flex-end" },
   historyAmount: { fontSize: 15, fontWeight: "800" },
-  actionsRow: { flexDirection: "row", gap: 12, marginTop: 8 },
-  actionBtn: { padding: 4 },
 });
