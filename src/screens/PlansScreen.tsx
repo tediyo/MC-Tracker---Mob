@@ -119,7 +119,7 @@ export function PlansScreen() {
       <View style={[styles.yearNavCard, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
         <TouchableOpacity
           onPress={() => setSelectedYear(selectedYear - 1)}
-          style={[styles.navBtn, { backgroundColor: theme.primaryLight }]}
+          style={[styles.navBtn, { backgroundColor: "transparent" }]}
         >
           <ChevronLeft size={20} color={theme.primary} />
         </TouchableOpacity>
@@ -131,7 +131,7 @@ export function PlansScreen() {
 
         <TouchableOpacity
           onPress={() => setSelectedYear(selectedYear + 1)}
-          style={[styles.navBtn, { backgroundColor: theme.primaryLight }]}
+          style={[styles.navBtn, { backgroundColor: "transparent" }]}
         >
           <ChevronRight size={20} color={theme.primary} />
         </TouchableOpacity>

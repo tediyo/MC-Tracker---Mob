@@ -230,7 +230,7 @@ export function DashboardScreen() {
       {/* Ethiopian Date Navigation */}
       <View style={[styles.dateNavRow, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
         <TouchableOpacity
-          style={[styles.navBtn, { backgroundColor: theme.primaryLight }]}
+          style={[styles.navBtn, { backgroundColor: "transparent" }]}
           onPress={() => {
             if (refMonth > 1) setRefMonth(refMonth - 1);
             else {
@@ -247,7 +247,7 @@ export function DashboardScreen() {
         </Text>
 
         <TouchableOpacity
-          style={[styles.navBtn, { backgroundColor: theme.primaryLight }]}
+          style={[styles.navBtn, { backgroundColor: "transparent" }]}
           onPress={() => {
             if (refMonth < 13) setRefMonth(refMonth + 1);
             else {
