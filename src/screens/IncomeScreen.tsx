@@ -21,7 +21,8 @@ import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { SelectPicker } from "../components/ui/SelectPicker";
 import { AppModal } from "../components/ui/Modal";
-import { formatCurrency } from "../lib/utils";
+import { EthiopianDatePicker } from "../components/ui/EthiopianDatePicker";
+import { formatCurrency, formatEthiopianDate } from "../lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
 
@@ -178,7 +179,7 @@ export function IncomeScreen() {
           required
         />
 
-        <Input label="Date (YYYY-MM-DD)" value={date} onChangeText={setDate} required />
+        <EthiopianDatePicker label="Date" value={date} onChange={setDate} required />
 
         <SelectPicker
           label="Source Type"
@@ -221,7 +222,7 @@ export function IncomeScreen() {
           <Card key={item.id} style={styles.historyCard}>
             <View style={styles.historyRow}>
               <View style={styles.historyLeft}>
-                <Text style={[styles.historyDate, { color: theme.textMuted }]}>{item.date}</Text>
+                <Text style={[styles.historyDate, { color: theme.textMuted }]}>{formatEthiopianDate(item.date)}</Text>
                 <View style={[styles.sourceBadge, { backgroundColor: theme.primaryLight }]}>
                   <Text style={[styles.sourceBadgeText, { color: theme.primary }]}>
                     {INCOME_SOURCE_TYPE_LABELS[item.source_type as IncomeSourceType]}
@@ -276,10 +277,10 @@ export function IncomeScreen() {
               keyboardType="numeric"
             />
 
-            <Input
+            <EthiopianDatePicker
               label="Date"
               value={editingItem.date}
-              onChangeText={(val) => setEditingItem({ ...editingItem, date: val })}
+              onChange={(val) => setEditingItem({ ...editingItem, date: val })}
             />
 
             <Input

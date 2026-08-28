@@ -4,11 +4,14 @@
  * it here and it cascades everywhere (primary, its tint/shade, and the "success" color).
  * Nothing else in the codebase should hardcode a green hex; import from here instead.
  */
-export const BRAND_COLOR = "#03ad03ff"; // Emerald 500
+export const BRAND_COLOR = "#03ad03"; // plain 6-digit RGB - see hexToRgb below for why
 
 // --- small color-math helpers (no dependency needed for this) ---
 function hexToRgb(hex: string): [number, number, number] {
-  const clean = hex.replace("#", "");
+  // Accepts either #RRGGBB or #RRGGBBAA (e.g. pasted from a color picker that includes
+  // alpha) - only the first 6 digits are ever RGB; anything after that is alpha and must
+  // be dropped here, or the bit-shifts below silently produce a completely wrong color.
+  const clean = hex.replace("#", "").slice(0, 6);
   const value = parseInt(clean, 16);
   return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
 }

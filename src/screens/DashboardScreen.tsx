@@ -29,6 +29,7 @@ import { useTheme } from "../context/ThemeContext";
 import { Card } from "../components/ui/Card";
 import { SelectPicker } from "../components/ui/SelectPicker";
 import { SimpleBarChart } from "../components/charts/BarChart";
+import { SimpleLineChart } from "../components/charts/LineChart";
 import { SimplePieChart } from "../components/charts/PieChart";
 import { formatCurrency } from "../lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -353,9 +354,7 @@ export function DashboardScreen() {
             >
               <View>
                 <Text style={[styles.compTitle, { color: theme.textPrimary }]}>Period Comparison Analytics</Text>
-                <Text style={[styles.compSubtitle, { color: theme.textMuted }]}>
-                  Compare side-by-side ({compMode.toUpperCase()})
-                </Text>
+                
               </View>
               {isComparisonOpen ? (
                 <ChevronUp size={20} color={theme.primary} />
@@ -517,7 +516,7 @@ export function DashboardScreen() {
 
                     {/* Side by Side Chart */}
                     <Text style={[styles.chartTitle, { color: theme.textSecondary }]}>Side-by-Side Comparison</Text>
-                    <SimpleBarChart
+                    <SimpleLineChart
                       data={[
                         {
                           label: "Income",
@@ -538,6 +537,8 @@ export function DashboardScreen() {
                       height={160}
                       colorA={theme.primary}
                       colorB="#3b82f6"
+                      labelA={compData.summaryA.label}
+                      labelB={compData.summaryB.label}
                     />
                   </View>
                 ) : null}
