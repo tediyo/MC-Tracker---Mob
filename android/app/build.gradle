@@ -176,6 +176,11 @@ dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
+    // Official Splash Screen API compat - needed to properly control the Android 12+
+    // system-enforced splash (background color, icon) instead of it falling back to an
+    // unstyled default. See MainActivity.kt's installSplashScreen() call.
+    implementation("androidx.core:core-splashscreen:1.0.1")
+
     def isGifEnabled = (findProperty('enableGifSupport') ?: "") == "true";
     def isWebpEnabled = (findProperty('enableWebpSupport') ?: "") == "true";
     def isWebpAnimatedEnabled = (findProperty('enableWebpAnimatedSupport') ?: "") == "true";

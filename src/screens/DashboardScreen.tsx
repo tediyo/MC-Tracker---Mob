@@ -206,6 +206,7 @@ export function DashboardScreen() {
         netProfitLoss: dashboardData.netProfitLoss,
         costLimit: dashboardData.costLimit,
         costVariance: dashboardData.costVariance,
+        savingsGoal: dashboardData.savingsGoal,
         basicCost: dashboardData.basicCost,
         fancyCost: dashboardData.fancyCost,
         extraCost: dashboardData.extraCost,

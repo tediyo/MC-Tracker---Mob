@@ -10,6 +10,7 @@ import { ProfileScreen } from "../screens/ProfileScreen";
 import { HistoryScreen, type HistoryTab } from "../screens/HistoryScreen";
 import { useAuth } from "../context/AuthContext";
 import { AuthScreen } from "../screens/AuthScreen";
+import { AppLogo } from "../components/ui/AppLogo";
 
 export type TabType = "dashboard" | "income" | "costs" | "plans" | "profile" | "history";
 
@@ -24,11 +25,11 @@ export function MainNavigator() {
   const isDark = themeMode === "dark";
 
   if (loading) {
+    // Full-screen logo, same treatment as the native splash screen (drawable/splashscreen.xml)
+    // - so there's no visible handoff from splash to a plain "Loading..." text screen.
     return (
       <View style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
-        <Text style={[styles.loadingText, { color: theme.textMuted }]}>
-          Loading MC Tracker Mobile...
-        </Text>
+        <AppLogo width={220} />
       </View>
     );
   }
@@ -142,10 +143,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-  },
-  loadingText: {
-    fontSize: 14,
-    fontWeight: "600",
   },
   screenContainer: {
     flex: 1,
