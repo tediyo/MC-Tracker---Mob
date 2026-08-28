@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from "react-native";
+import { BRAND_COLOR } from "../theme/colors";
 
 interface Props {
   children: ReactNode;
@@ -97,7 +98,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   button: {
-    backgroundColor: "#10b981",
+    backgroundColor: BRAND_COLOR,
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 12,
