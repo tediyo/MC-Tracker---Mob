@@ -22,6 +22,8 @@ import {
 import {
   ETHIOPIAN_MONTHS,
   getEthiopianDate,
+  toGregorianDate,
+  getDaysInEthiopianMonth,
   COST_CATEGORY_LABELS,
   type TimeFrame,
 } from "../shared-types";
@@ -40,6 +42,27 @@ import { supabase } from "../lib/supabase";
 import { getComparisonData, type ComparisonMode } from "../../src/lib/comparisonHelper";
 import { captureRef } from "react-native-view-shot";
 import RNPrint from "react-native-print";
+
+/** Same 4-bucket weekly scheme as comparisonHelper.ts's weekly comparison mode (an Ethiopian
+ * month split into days 1-7 / 8-14 / 15-21 / 22-end) - kept consistent so the main
+ * dashboard's "Weekly" filter and the Period Comparison section below it mean the same thing. */
+function getWeekBounds(daysInMonth: number, week: number): { start: number; end: number } {
+  if (week === 1) return { start: 1, end: 7 };
+  if (week === 2) return { start: 8, end: 14 };
+  if (week === 3) return { start: 15, end: 21 };
+  return { start: 22, end: daysInMonth };
+}
+
+function weekBucketForDay(day: number): number {
+  if (day <= 7) return 1;
+  if (day <= 14) return 2;
+  if (day <= 21) return 3;
+  return 4;
+}
+
+function formatIso(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
 
 export function DashboardScreen() {
   const { user } = useAuth();
@@ -61,10 +84,13 @@ export function DashboardScreen() {
   const incomeCostPieRef = useRef<View>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
-  // Timeframe switcher state
+  // Timeframe switcher state. refWeek/refDay only matter for the "weekly"/"daily" pills -
+  // both resolve within the navigated (refYear, refMonth), same as the arrows below.
   const [timeframe, setTimeframe] = useState<TimeFrame>("monthly");
   const [refYear, setRefYear] = useState<number>(currentEth.year);
   const [refMonth, setRefMonth] = useState<number>(currentEth.month);
+  const [refWeek, setRefWeek] = useState<number>(weekBucketForDay(currentEth.day));
+  const [refDay, setRefDay] = useState<number>(currentEth.day);
 
   // Collapsible Comparison State
   const [isComparisonOpen, setIsComparisonOpen] = useState<boolean>(false);
@@ -86,18 +112,56 @@ export function DashboardScreen() {
   const [compYearOnlyA, setCompYearOnlyA] = useState<number>(currentEth.year - 1);
   const [compYearOnlyB, setCompYearOnlyB] = useState<number>(currentEth.year);
 
+  // The exact Gregorian date range the selected timeframe pill covers, anchored to the
+  // Ethiopian nav state above - daily/weekly resolve within the navigated month, same as
+  // the arrows below step through history for every timeframe. This is what was missing
+  // before: the query used to fetch every row ever entered regardless of which pill or
+  // which month was selected.
+  const { rangeStart, rangeEnd } = useMemo(() => {
+    if (timeframe === "yearly") {
+      return {
+        rangeStart: toGregorianDate(refYear, 1, 1),
+        rangeEnd: toGregorianDate(refYear, 13, getDaysInEthiopianMonth(refYear, 13)),
+      };
+    }
+    if (timeframe === "weekly") {
+      const daysInMonth = getDaysInEthiopianMonth(refYear, refMonth);
+      const bounds = getWeekBounds(daysInMonth, refWeek);
+      return {
+        rangeStart: toGregorianDate(refYear, refMonth, bounds.start),
+        rangeEnd: toGregorianDate(refYear, refMonth, bounds.end),
+      };
+    }
+    if (timeframe === "daily") {
+      const d = toGregorianDate(refYear, refMonth, refDay);
+      return { rangeStart: d, rangeEnd: d };
+    }
+    // monthly
+    return {
+      rangeStart: toGregorianDate(refYear, refMonth, 1),
+      rangeEnd: toGregorianDate(refYear, refMonth, getDaysInEthiopianMonth(refYear, refMonth)),
+    };
+  }, [timeframe, refYear, refMonth, refWeek, refDay]);
+
   // Fetch Dashboard Core Metrics
   const { data: dashboardData, isLoading, refetch } = useQuery({
-    queryKey: ["mobile-dashboard", userId, timeframe, refYear, refMonth],
+    queryKey: ["mobile-dashboard", userId, timeframe, refYear, refMonth, refWeek, refDay],
     queryFn: async () => {
+      const startIso = formatIso(rangeStart);
+      const endIso = formatIso(rangeEnd);
+
       const { data: incomes } = await supabase
         .from("incomes")
         .select("*")
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .gte("date", startIso)
+        .lte("date", endIso);
       const { data: costs } = await supabase
         .from("costs")
         .select("*")
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .gte("date", startIso)
+        .lte("date", endIso);
       const { data: plans } = await supabase
         .from("plans")
         .select("*")
@@ -106,9 +170,15 @@ export function DashboardScreen() {
       const totalInc = (incomes || []).reduce((acc, r) => acc + Number(r.amount), 0);
       const totalCost = (costs || []).reduce((acc, r) => acc + Number(r.amount), 0);
 
-      const activePlan = (plans || []).find(
-        (p) => p.year === refYear && p.month === refMonth,
-      );
+      // Budget targets only resolve for an exact monthly match - daily/weekly/yearly would
+      // need pro-rating or summing multiple plans (the web dashboard's shared-types
+      // calculatePeriodMetrics does this) which isn't wired up here. Falling back to
+      // "No Plan"/"Unbudgeted" for those is honest; showing the monthly plan's numbers
+      // against a differently-sized period would be misleading.
+      const activePlan =
+        timeframe === "monthly"
+          ? (plans || []).find((p) => p.year === refYear && p.month === refMonth)
+          : undefined;
 
       const costLimit = activePlan ? Number(activePlan.target_cost_limit) : null;
       const savingsGoal = activePlan ? Number(activePlan.target_savings_goal) : null;
@@ -186,6 +256,15 @@ export function DashboardScreen() {
 
   const monthName = ETHIOPIAN_MONTHS[refMonth - 1]?.nameEn || `Month ${refMonth}`;
 
+  // What the nav row (and the PDF report's period line) should say for the active pill -
+  // "Nehase 2018 E.C." alone was misleading once Daily/Weekly/Yearly actually filter data.
+  const periodLabel = useMemo(() => {
+    if (timeframe === "yearly") return `${refYear} E.C.`;
+    if (timeframe === "weekly") return `Week ${refWeek} - ${monthName} ${refYear} E.C.`;
+    if (timeframe === "daily") return `${refDay} ${monthName} ${refYear} E.C.`;
+    return `${monthName} ${refYear} E.C.`;
+  }, [timeframe, refYear, refMonth, refWeek, refDay, monthName]);
+
   const handleDownloadReport = async () => {
     if (!dashboardData) return;
     setIsGeneratingReport(true);
@@ -198,13 +277,23 @@ export function DashboardScreen() {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     try {
-      const [pieChartBase64, incomeCostPieBase64] = await Promise.all([
-        captureRef(categoryPieCaptureRef, { format: "png", quality: 0.9, result: "base64" }),
-        captureRef(incomeCostPieRef, { format: "png", quality: 0.9, result: "base64" }),
-      ]);
+      // Captured sequentially, NOT via Promise.all - firing two native captureRef calls at
+      // once is a known react-native-view-shot issue on Android where the second capture can
+      // read back stale/in-flight bitmap state from the first, cross-contaminating or
+      // truncating one of the two images (intermittent - hence "sometimes" in testing).
+      const pieChartBase64 = await captureRef(categoryPieCaptureRef, {
+        format: "png",
+        quality: 0.9,
+        result: "base64",
+      });
+      const incomeCostPieBase64 = await captureRef(incomeCostPieRef, {
+        format: "png",
+        quality: 0.9,
+        result: "base64",
+      });
 
       const html = buildOverviewReportHtml({
-        periodLabel: `${monthName} ${refYear} E.C.`,
+        periodLabel,
         totalIncome: dashboardData.totalIncome,
         totalCosts: dashboardData.totalCosts,
         netProfitLoss: dashboardData.netProfitLoss,
@@ -297,13 +386,38 @@ export function DashboardScreen() {
         </View>
       </View>
 
-      {/* Ethiopian Date Navigation */}
+      {/* Ethiopian Date Navigation - steps by the unit matching the active timeframe pill
+          (day/week/month/year), rolling over into the adjacent month/year at the edges. */}
       <View style={[styles.dateNavRow, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
         <TouchableOpacity
           style={[styles.navBtn, { backgroundColor: "transparent" }]}
           onPress={() => {
-            if (refMonth > 1) setRefMonth(refMonth - 1);
-            else {
+            if (timeframe === "yearly") {
+              setRefYear(refYear - 1);
+            } else if (timeframe === "weekly") {
+              if (refWeek > 1) setRefWeek(refWeek - 1);
+              else if (refMonth > 1) {
+                setRefMonth(refMonth - 1);
+                setRefWeek(4);
+              } else {
+                setRefMonth(13);
+                setRefYear(refYear - 1);
+                setRefWeek(4);
+              }
+            } else if (timeframe === "daily") {
+              if (refDay > 1) setRefDay(refDay - 1);
+              else if (refMonth > 1) {
+                const prevMonth = refMonth - 1;
+                setRefMonth(prevMonth);
+                setRefDay(getDaysInEthiopianMonth(refYear, prevMonth));
+              } else {
+                setRefMonth(13);
+                setRefYear(refYear - 1);
+                setRefDay(getDaysInEthiopianMonth(refYear - 1, 13));
+              }
+            } else if (refMonth > 1) {
+              setRefMonth(refMonth - 1);
+            } else {
               setRefMonth(13);
               setRefYear(refYear - 1);
             }
@@ -312,15 +426,37 @@ export function DashboardScreen() {
           <ChevronLeft size={18} color={theme.primary} />
         </TouchableOpacity>
 
-        <Text style={[styles.dateNavText, { color: theme.textPrimary }]}>
-          {monthName} {refYear} E.C.
-        </Text>
+        <Text style={[styles.dateNavText, { color: theme.textPrimary }]}>{periodLabel}</Text>
 
         <TouchableOpacity
           style={[styles.navBtn, { backgroundColor: "transparent" }]}
           onPress={() => {
-            if (refMonth < 13) setRefMonth(refMonth + 1);
-            else {
+            if (timeframe === "yearly") {
+              setRefYear(refYear + 1);
+            } else if (timeframe === "weekly") {
+              if (refWeek < 4) setRefWeek(refWeek + 1);
+              else if (refMonth < 13) {
+                setRefMonth(refMonth + 1);
+                setRefWeek(1);
+              } else {
+                setRefMonth(1);
+                setRefYear(refYear + 1);
+                setRefWeek(1);
+              }
+            } else if (timeframe === "daily") {
+              const daysInCurrentMonth = getDaysInEthiopianMonth(refYear, refMonth);
+              if (refDay < daysInCurrentMonth) setRefDay(refDay + 1);
+              else if (refMonth < 13) {
+                setRefMonth(refMonth + 1);
+                setRefDay(1);
+              } else {
+                setRefMonth(1);
+                setRefYear(refYear + 1);
+                setRefDay(1);
+              }
+            } else if (refMonth < 13) {
+              setRefMonth(refMonth + 1);
+            } else {
               setRefMonth(1);
               setRefYear(refYear + 1);
             }
