@@ -86,8 +86,7 @@ export function DashboardScreen() {
   const incomeCostPieRef = useRef<View>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
-  // Timeframe switcher state. refWeek/refDay only matter for the "weekly"/"daily" pills -
-  // both resolve within the navigated (refYear, refMonth), same as the arrows below.
+  const [analyticsFilter, setAnalyticsFilter] = useState<"all" | "incomes" | "costs">("all");
   const [timeframe, setTimeframe] = useState<TimeFrame>("monthly");
   const [refYear, setRefYear] = useState<number>(currentEth.year);
   const [refMonth, setRefMonth] = useState<number>(currentEth.month);
@@ -481,91 +480,182 @@ export function DashboardScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Analytics Filter Selector (All / Incomes / Costs) */}
+      <View style={[styles.filterBar, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
+        {(["all", "incomes", "costs"] as const).map((filterKey) => (
+          <TouchableOpacity
+            key={filterKey}
+            style={[
+              styles.filterTab,
+              analyticsFilter === filterKey && { backgroundColor: theme.primary },
+            ]}
+            onPress={() => setAnalyticsFilter(filterKey)}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[
+                styles.filterTabText,
+                { color: analyticsFilter === filterKey ? "#ffffff" : theme.textSecondary },
+                analyticsFilter === filterKey && styles.filterTabActiveText,
+              ]}
+            >
+              {filterKey === "all" ? "All Overview" : filterKey === "incomes" ? "Incomes Only" : "Costs Only"}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       {isLoading ? (
         <ActivityIndicator color={theme.primary} style={{ marginVertical: 30 }} />
       ) : (
         <>
           {/* Summary Cards Grid */}
           <View style={styles.cardsGrid}>
-            {/* Total Income */}
-            <Card style={styles.cardHalf}>
-              <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Total Income</Text>
-              <Text style={[styles.cardValue, { color: theme.textPrimary }]}>
-                {showBalances ? formatCurrency(dashboardData?.totalIncome || 0) : "ETB ••••••"}
-              </Text>
-            </Card>
+            {/* Display based on active analyticsFilter */}
+            {(analyticsFilter === "all" || analyticsFilter === "incomes") && (
+              <Card style={styles.cardHalf}>
+                <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Total Income</Text>
+                <Text style={[styles.cardValue, { color: theme.primary }]}>
+                  {showBalances ? formatCurrency(dashboardData?.totalIncome || 0) : "ETB ••••••"}
+                </Text>
+              </Card>
+            )}
 
-            {/* Total Costs */}
-            <Card style={styles.cardHalf}>
-              <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Total Costs</Text>
-              <Text style={[styles.cardValue, { color: theme.textPrimary }]}>
-                {showBalances ? formatCurrency(dashboardData?.totalCosts || 0) : "ETB ••••••"}
-              </Text>
-            </Card>
+            {(analyticsFilter === "all" || analyticsFilter === "costs") && (
+              <Card style={styles.cardHalf}>
+                <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Total Costs</Text>
+                <Text style={[styles.cardValue, { color: theme.textPrimary }]}>
+                  {showBalances ? formatCurrency(dashboardData?.totalCosts || 0) : "ETB ••••••"}
+                </Text>
+              </Card>
+            )}
 
-            {/* Net Savings */}
-            <Card style={styles.cardHalf}>
-              <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Net Savings</Text>
-              <Text
-                style={[
-                  styles.cardValue,
-                  { color: (dashboardData?.netProfitLoss || 0) >= 0 ? theme.primary : theme.danger },
-                ]}
-              >
-                {showBalances ? formatCurrency(dashboardData?.netProfitLoss || 0) : "ETB ••••••"}
-              </Text>
-            </Card>
+            {(analyticsFilter === "all" || analyticsFilter === "incomes") && (
+              <Card style={styles.cardHalf}>
+                <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Net Savings</Text>
+                <Text
+                  style={[
+                    styles.cardValue,
+                    { color: (dashboardData?.netProfitLoss || 0) >= 0 ? theme.primary : theme.danger },
+                  ]}
+                >
+                  {showBalances ? formatCurrency(dashboardData?.netProfitLoss || 0) : "ETB ••••••"}
+                </Text>
+              </Card>
+            )}
 
-            {/* Budget Variance */}
-            <Card style={styles.cardHalf}>
-              <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Cost Budget</Text>
-              <Text style={[styles.cardValue, { color: theme.textPrimary }]}>
-                {dashboardData?.costLimit !== null
-                  ? showBalances
-                    ? formatCurrency(dashboardData?.costLimit || 0)
-                    : "ETB ••••••"
-                  : "No Plan"}
-              </Text>
-              <Text style={[styles.badgeText, { color: theme.primary }]}>
-                {dashboardData?.costVariance !== null
-                  ? showBalances
-                    ? (dashboardData?.costVariance || 0) >= 0
-                      ? `+${formatCurrency(dashboardData?.costVariance || 0)} left`
-                      : `${formatCurrency(dashboardData?.costVariance || 0)} over`
-                    : "• • • • • •"
-                  : "Unbudgeted"}
-              </Text>
-            </Card>
+            {(analyticsFilter === "all" || analyticsFilter === "costs") && (
+              <Card style={styles.cardHalf}>
+                <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Cost Budget</Text>
+                <Text style={[styles.cardValue, { color: theme.textPrimary }]}>
+                  {dashboardData?.costLimit !== null
+                    ? showBalances
+                      ? formatCurrency(dashboardData?.costLimit || 0)
+                      : "ETB ••••••"
+                    : "No Plan"}
+                </Text>
+                <Text style={[styles.badgeText, { color: theme.primary }]}>
+                  {dashboardData?.costVariance !== null
+                    ? showBalances
+                      ? (dashboardData?.costVariance || 0) >= 0
+                        ? `+${formatCurrency(dashboardData?.costVariance || 0)} left`
+                        : `${formatCurrency(dashboardData?.costVariance || 0)} over`
+                      : "• • • • • •"
+                    : "Unbudgeted"}
+                </Text>
+              </Card>
+            )}
+
+            {analyticsFilter === "costs" && (
+              <>
+                <Card style={styles.cardHalf}>
+                  <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Basic Expenses</Text>
+                  <Text style={[styles.cardValue, { color: theme.textPrimary }]}>
+                    {showBalances ? formatCurrency(dashboardData?.basicCost || 0) : "ETB ••••••"}
+                  </Text>
+                </Card>
+                <Card style={styles.cardHalf}>
+                  <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Fancy Expenses</Text>
+                  <Text style={[styles.cardValue, { color: "#f59e0b" }]}>
+                    {showBalances ? formatCurrency(dashboardData?.fancyCost || 0) : "ETB ••••••"}
+                  </Text>
+                </Card>
+              </>
+            )}
           </View>
 
-          {/* Category Donut Chart */}
+          {/* Donut Chart Analytics */}
           <Card>
-            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Category Expense Proportions</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+              {analyticsFilter === "incomes"
+                ? "Income vs Net Ratio"
+                : analyticsFilter === "costs"
+                ? "Costs Category Breakdown"
+                : "Category Expense Proportions"}
+            </Text>
             <View style={{ backgroundColor: theme.card }}>
-              <SimplePieChart
-                data={[
-                  { label: "Basic", value: dashboardData?.basicCost || 0, color: theme.primary },
-                  { label: "Fancy", value: dashboardData?.fancyCost || 0, color: "#f59e0b" },
-                  { label: "Extra", value: dashboardData?.extraCost || 0, color: "#3b82f6" },
-                ]}
-                showBalances={showBalances}
-              />
+              {analyticsFilter === "incomes" ? (
+                <SimplePieChart
+                  data={[
+                    { label: "Income", value: dashboardData?.totalIncome || 0, color: theme.primary },
+                    { label: "Costs", value: dashboardData?.totalCosts || 0, color: "#f59e0b" },
+                    { label: "Net Savings", value: Math.max(dashboardData?.netProfitLoss || 0, 0), color: "#3b82f6" },
+                  ]}
+                  showBalances={showBalances}
+                />
+              ) : (
+                <SimplePieChart
+                  data={[
+                    { label: "Basic", value: dashboardData?.basicCost || 0, color: theme.primary },
+                    { label: "Fancy", value: dashboardData?.fancyCost || 0, color: "#f59e0b" },
+                    { label: "Extra", value: dashboardData?.extraCost || 0, color: "#3b82f6" },
+                  ]}
+                  showBalances={showBalances}
+                />
+              )}
             </View>
           </Card>
 
-          {/* Income vs Expense Overview */}
+          {/* Bar Chart Overview */}
           <Card>
-            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Income vs Expense Overview</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+              {analyticsFilter === "incomes"
+                ? "Income & Savings Trends"
+                : analyticsFilter === "costs"
+                ? "Expenses Breakdown"
+                : "Income vs Expense Overview"}
+            </Text>
             <View ref={barChartRef} collapsable={false} style={{ backgroundColor: theme.card }}>
-              <SimpleBarChart
-                data={[
-                  { label: "Income", valueA: dashboardData?.totalIncome || 0 },
-                  { label: "Costs", valueA: dashboardData?.totalCosts || 0 },
-                  { label: "Net", valueA: Math.max(dashboardData?.netProfitLoss || 0, 0) },
-                ]}
-                height={150}
-                colorA={theme.primary}
-              />
+              {analyticsFilter === "incomes" ? (
+                <SimpleBarChart
+                  data={[
+                    { label: "Total Income", valueA: dashboardData?.totalIncome || 0 },
+                    { label: "Net Profit", valueA: Math.max(dashboardData?.netProfitLoss || 0, 0) },
+                  ]}
+                  height={150}
+                  colorA={theme.primary}
+                />
+              ) : analyticsFilter === "costs" ? (
+                <SimpleBarChart
+                  data={[
+                    { label: "Basic", valueA: dashboardData?.basicCost || 0 },
+                    { label: "Fancy", valueA: dashboardData?.fancyCost || 0 },
+                    { label: "Extra", valueA: dashboardData?.extraCost || 0 },
+                  ]}
+                  height={150}
+                  colorA="#f59e0b"
+                />
+              ) : (
+                <SimpleBarChart
+                  data={[
+                    { label: "Income", valueA: dashboardData?.totalIncome || 0 },
+                    { label: "Costs", valueA: dashboardData?.totalCosts || 0 },
+                    { label: "Net", valueA: Math.max(dashboardData?.netProfitLoss || 0, 0) },
+                  ]}
+                  height={150}
+                  colorA={theme.primary}
+                />
+              )}
             </View>
           </Card>
 
@@ -849,8 +939,29 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     padding: 10,
     borderRadius: 12,
-    marginBottom: 16,
+    marginBottom: 12,
     borderWidth: 1,
+  },
+  filterBar: {
+    flexDirection: "row",
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 3,
+    marginBottom: 16,
+  },
+  filterTab: {
+    flex: 1,
+    paddingVertical: 7,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 9,
+  },
+  filterTabText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  filterTabActiveText: {
+    fontWeight: "800",
   },
   navBtn: { padding: 6, borderRadius: 8 },
   dateNavText: { fontSize: 14, fontWeight: "700" },
