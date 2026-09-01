@@ -18,6 +18,8 @@ import {
   Sun,
   Moon,
   Download,
+  Plus,
+  Target,
 } from "lucide-react-native";
 import {
   ETHIOPIAN_MONTHS,
@@ -25,6 +27,8 @@ import {
   toGregorianDate,
   getDaysInEthiopianMonth,
   COST_CATEGORY_LABELS,
+  COST_SUBCATEGORY_LABELS,
+  type CostSubcategory,
   type TimeFrame,
 } from "../shared-types";
 import { useAuth } from "../context/AuthContext";
@@ -33,11 +37,16 @@ import { useCalendar } from "../context/CalendarContext";
 import { useAppAlert } from "../context/AlertContext";
 import { Card } from "../components/ui/Card";
 import { SelectPicker } from "../components/ui/SelectPicker";
+import { EthiopianDatePicker } from "../components/ui/EthiopianDatePicker";
 import { SimpleBarChart } from "../components/charts/BarChart";
 import { SimpleLineChart } from "../components/charts/LineChart";
 import { SimplePieChart } from "../components/charts/PieChart";
+import { ProgressRing } from "../components/charts/ProgressRing";
+import { QuickAddModal } from "../components/ui/QuickAddModal";
+import { DashboardCardsSkeleton, ChartCardSkeleton } from "../components/ui/Skeleton";
 import { formatCurrency } from "../lib/utils";
 import { buildOverviewReportHtml } from "../lib/reportGenerator";
+import { checkBudgetThresholds } from "../services/notificationService";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
 import { getComparisonData, type ComparisonMode } from "../../src/lib/comparisonHelper";
@@ -87,6 +96,7 @@ export function DashboardScreen() {
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   const [analyticsFilter, setAnalyticsFilter] = useState<"all" | "incomes" | "costs">("all");
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState<boolean>(false);
   const [timeframe, setTimeframe] = useState<TimeFrame>("monthly");
   const [refYear, setRefYear] = useState<number>(currentEth.year);
   const [refMonth, setRefMonth] = useState<number>(currentEth.month);
@@ -194,6 +204,22 @@ export function DashboardScreen() {
         .filter((c) => c.category === "extra")
         .reduce((sum, c) => sum + Number(c.amount), 0);
 
+      // Top 3 Expense Subcategories
+      const subcategoryMap: Record<string, number> = {};
+      (costs || []).forEach((c) => {
+        const sub = c.subcategory || "other";
+        subcategoryMap[sub] = (subcategoryMap[sub] || 0) + Number(c.amount);
+      });
+
+      const topSubcategories = Object.entries(subcategoryMap)
+        .map(([sub, amount]) => ({ subcategory: sub as CostSubcategory, amount }))
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 3);
+
+      if (costLimit && costLimit > 0) {
+        checkBudgetThresholds(totalCost, costLimit);
+      }
+
       return {
         totalIncome: totalInc,
         totalCosts: totalCost,
@@ -204,10 +230,17 @@ export function DashboardScreen() {
         basicCost,
         fancyCost,
         extraCost,
+        topSubcategories,
       };
     },
     enabled: !!userId,
   });
+
+  const savingsProgressPct = useMemo(() => {
+    if (!dashboardData || !dashboardData.savingsGoal || dashboardData.savingsGoal <= 0) return 0;
+    const netSavings = Math.max(dashboardData.netProfitLoss, 0);
+    return (netSavings / dashboardData.savingsGoal) * 100;
+  }, [dashboardData]);
 
   // Fetch Period Comparison Data
   const { data: compData, isLoading: isCompLoading } = useQuery({
@@ -331,11 +364,12 @@ export function DashboardScreen() {
   };
 
   return (
-    <ScrollView
-      style={[styles.flex, { backgroundColor: theme.background }]}
-      contentContainerStyle={styles.container}
-      refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={theme.primary} />}
-    >
+    <View style={styles.flex}>
+      <ScrollView
+        style={[styles.flex, { backgroundColor: theme.background }]}
+        contentContainerStyle={styles.container}
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={theme.primary} />}
+      >
       {/* Header with Clean Controls */}
       <View style={styles.headerRow}>
         <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Financial Overview</Text>
@@ -506,7 +540,11 @@ export function DashboardScreen() {
       </View>
 
       {isLoading ? (
-        <ActivityIndicator color={theme.primary} style={{ marginVertical: 30 }} />
+        <View style={{ gap: 12, marginVertical: 8 }}>
+          <DashboardCardsSkeleton />
+          <ChartCardSkeleton height={140} />
+          <ChartCardSkeleton height={160} />
+        </View>
       ) : (
         <>
           {/* Summary Cards Grid */}
@@ -582,6 +620,47 @@ export function DashboardScreen() {
                 </Card>
               </>
             )}
+          </View>
+
+          {/* Savings Progress Ring & Top Subcategories Section */}
+          <View style={styles.gridRow}>
+            {/* Savings Target Progress Ring */}
+            <Card style={styles.cardHalf}>
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary, textAlign: "center" }]}>
+                Savings Target
+              </Text>
+              <ProgressRing
+                percentage={savingsProgressPct}
+                size={110}
+                sublabel={
+                  dashboardData?.savingsGoal
+                    ? `Goal: ${formatCurrency(dashboardData.savingsGoal)}`
+                    : "No Target Goal"
+                }
+              />
+            </Card>
+
+            {/* Top 3 Expense Subcategories */}
+            <Card style={styles.cardHalf}>
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Top Expenses</Text>
+              {dashboardData?.topSubcategories && dashboardData.topSubcategories.length > 0 ? (
+                dashboardData.topSubcategories.map((item, idx) => (
+                  <View key={item.subcategory} style={styles.subCatItem}>
+                    <View style={styles.subCatLeft}>
+                      <Text style={[styles.subCatRank, { color: theme.primary }]}>#{idx + 1}</Text>
+                      <Text style={[styles.subCatName, { color: theme.textPrimary }]} numberOfLines={1}>
+                        {COST_SUBCATEGORY_LABELS[item.subcategory] || item.subcategory}
+                      </Text>
+                    </View>
+                    <Text style={[styles.subCatAmount, { color: theme.textSecondary }]}>
+                      {showBalances ? formatCurrency(item.amount) : "••••"}
+                    </Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={[styles.emptySubText, { color: theme.textMuted }]}>No costs logged</Text>
+              )}
+            </Card>
           </View>
 
           {/* Donut Chart Analytics */}
@@ -892,7 +971,20 @@ export function DashboardScreen() {
           </Card>
         </>
       )}
-    </ScrollView>
+      </ScrollView>
+
+      {/* Floating Action Button for Quick Add */}
+      <TouchableOpacity
+        style={[styles.fabBtn, { backgroundColor: theme.primary }]}
+        onPress={() => setIsQuickAddOpen(true)}
+        activeOpacity={0.85}
+      >
+        <Plus size={26} color="#ffffff" strokeWidth={2.5} />
+      </TouchableOpacity>
+
+      {/* Quick Add Modal */}
+      <QuickAddModal visible={isQuickAddOpen} onClose={() => setIsQuickAddOpen(false)} />
+    </View>
   );
 }
 
@@ -986,4 +1078,57 @@ const styles = StyleSheet.create({
   deltaLabel: { fontSize: 12, fontWeight: "600" },
   deltaValue: { fontSize: 14, fontWeight: "800" },
   chartTitle: { fontSize: 12, fontWeight: "700", marginTop: 10, marginBottom: 6 },
+  gridRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  subCatItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(150, 150, 150, 0.1)",
+  },
+  subCatLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flex: 1,
+  },
+  subCatRank: {
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  subCatName: {
+    fontSize: 12,
+    fontWeight: "600",
+    flex: 1,
+  },
+  subCatAmount: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  emptySubText: {
+    fontSize: 11,
+    textAlign: "center",
+    marginVertical: 12,
+  },
+  fabBtn: {
+    position: "absolute",
+    bottom: 90,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+    zIndex: 100,
+  },
 });

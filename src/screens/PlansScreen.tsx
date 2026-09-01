@@ -21,6 +21,7 @@ import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { AppModal } from "../components/ui/Modal";
+import { ListFeedSkeleton } from "../components/ui/Skeleton";
 import { formatCurrency } from "../lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
@@ -166,7 +167,7 @@ export function PlansScreen() {
       </View>
 
       {isLoading ? (
-        <ActivityIndicator color={theme.primary} style={{ marginVertical: 30 }} />
+        <ListFeedSkeleton count={4} />
       ) : (
         /* Month Cards */
         <View style={styles.gridContainer}>

@@ -46,7 +46,7 @@ export async function createNotificationChannel() {
 }
 
 /**
- * Displays an immediate push notification popup.
+ * Displays an immediate push notification popup on device.
  */
 export async function displayNotification(title: string, body: string, data?: Record<string, string>) {
   await createNotificationChannel();
@@ -67,28 +67,92 @@ export async function displayNotification(title: string, body: string, data?: Re
 }
 
 /**
+ * Schedules a daily 8:00 PM local push notification reminder on device.
+ */
+export async function scheduleDaily8PMReminder() {
+  try {
+    await createNotificationChannel();
+
+    const now = new Date();
+    const scheduledTime = new Date();
+    scheduledTime.setHours(20, 0, 0, 0); // 8:00 PM local time
+
+    // If past 8:00 PM today, schedule for 8:00 PM tomorrow
+    if (now.getTime() > scheduledTime.getTime()) {
+      scheduledTime.setDate(scheduledTime.getDate() + 1);
+    }
+
+    await notifee.createTriggerNotification(
+      {
+        id: "daily_8pm_reminder",
+        title: "MC Tracker Evening Reminder",
+        body: "Don't forget to record today's income & expenses!",
+        android: {
+          channelId: NOTIFICATION_CHANNEL_ID,
+          importance: AndroidImportance.HIGH,
+          pressAction: { id: "default" },
+        },
+      },
+      {
+        type: TriggerType.TIMESTAMP,
+        timestamp: scheduledTime.getTime(),
+        repeatFrequency: RepeatFrequency.DAILY,
+      }
+    );
+
+    console.log("[Notification] Scheduled Daily 8:00 PM reminder for:", scheduledTime.toLocaleString());
+  } catch (error) {
+    console.error("[Notification] Failed to schedule 8:00 PM daily reminder:", error);
+  }
+}
+
+/**
+ * Checks budget utilization and triggers Push Notifications if 80% or 100% threshold crossed.
+ */
+const notifiedThresholds = new Set<string>();
+
+export async function checkBudgetThresholds(totalCosts: number, costLimit: number) {
+  if (!costLimit || costLimit <= 0) return;
+
+  const pct = (totalCosts / costLimit) * 100;
+  const key80 = `80_${costLimit}`;
+  const key100 = `100_${costLimit}`;
+
+  if (pct >= 100 && !notifiedThresholds.has(key100)) {
+    notifiedThresholds.add(key100);
+    const title = "⚠️ Budget Limit Exceeded!";
+    const body = `You have reached 100% of your active budget limit (Spent ETB ${totalCosts.toFixed(2)} of ETB ${costLimit.toFixed(2)}).`;
+    
+    await displayNotification(title, body, { type: "budget_exceeded" });
+  } else if (pct >= 80 && pct < 100 && !notifiedThresholds.has(key80)) {
+    notifiedThresholds.add(key80);
+    const title = "⚠️ Budget Limit Warning (80%)";
+    const body = `You have reached ${pct.toFixed(0)}% of your active budget limit (Spent ETB ${totalCosts.toFixed(2)} of ETB ${costLimit.toFixed(2)}).`;
+    
+    await displayNotification(title, body, { type: "budget_warning" });
+  }
+}
+
+/**
  * Schedules a recurring notification every 2 minutes for testing purposes.
  */
 let recurringTimer: NodeJS.Timeout | null = null;
 
 export function start2MinuteNotificationSchedule() {
   console.log("[Notification] Starting 2-minute recurring push notification scheduler...");
-  
-  // Clear any existing timer
+
   if (recurringTimer) {
     clearInterval(recurringTimer);
   }
 
-  // Display initial test notification after 10 seconds
   setTimeout(() => {
     displayNotification(
-      " MC Tracker Reminder",
+      "MC Tracker Reminder",
       "Don't forget to log your daily income & expenses!",
       { test: "true" }
     );
   }, 10000);
 
-  // Trigger every 2 minutes (120,000 ms)
   recurringTimer = setInterval(() => {
     displayNotification(
       "MC Tracker 2-Min Update",
@@ -104,17 +168,14 @@ export function start2MinuteNotificationSchedule() {
 export async function initNotificationService() {
   console.log("[Notification] Initializing Notification Service...");
 
-  // 1. Request Permission
   const hasPermission = await requestNotificationPermission();
   if (!hasPermission) {
     console.log("[Notification] Permission not granted, skipping FCM initialization.");
     return;
   }
 
-  // 2. Setup Android Channel
   await createNotificationChannel();
 
-  // 3. Obtain FCM Token
   try {
     const fcmToken = await messaging().getToken();
     console.log("==========================================");
@@ -124,7 +185,6 @@ export async function initNotificationService() {
     console.warn("[Notification] FCM Token retrieval note:", err);
   }
 
-  // 4. Handle Foreground Messages from FCM
   messaging().onMessage(async (remoteMessage) => {
     console.log("[FCM] Foreground Message Received:", remoteMessage);
     if (remoteMessage.notification) {
@@ -136,7 +196,10 @@ export async function initNotificationService() {
     }
   });
 
-  // 5. Start the 2-minute test scheduler
+  // Schedule daily 8:00 PM reminder
+  scheduleDaily8PMReminder();
+
+  // Test schedule
   start2MinuteNotificationSchedule();
 }
 

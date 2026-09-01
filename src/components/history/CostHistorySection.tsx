@@ -17,6 +17,7 @@ import { Input } from "../ui/Input";
 import { AppModal } from "../ui/Modal";
 import { EthiopianDatePicker } from "../ui/EthiopianDatePicker";
 import { SelectPicker } from "../ui/SelectPicker";
+import { ListFeedSkeleton } from "../ui/Skeleton";
 import { formatCurrency, formatDateByMode } from "../../lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../lib/supabase";
@@ -164,7 +165,7 @@ export function CostHistorySection() {
       </Card>
 
       {isLoading ? (
-        <ActivityIndicator color={theme.primary} style={{ marginVertical: 20 }} />
+        <ListFeedSkeleton count={4} />
       ) : filteredCosts.length === 0 ? (
         <Text style={[styles.emptyText, { color: theme.textMuted }]}>No expense entries match these filters.</Text>
       ) : (

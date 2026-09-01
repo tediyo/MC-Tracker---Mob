@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch } from "react-native";
 import {
   UserCheck,
-  Lock,
   Palette,
   Pencil,
   ChevronRight,
@@ -22,7 +21,6 @@ import { useTheme } from "../context/ThemeContext";
 import { useCalendar } from "../context/CalendarContext";
 import { useAppAlert } from "../context/AlertContext";
 import { Card } from "../components/ui/Card";
-import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { AppModal } from "../components/ui/Modal";
 import { supabase } from "../lib/supabase";

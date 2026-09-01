@@ -18,6 +18,7 @@ import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { SelectPicker } from "../components/ui/SelectPicker";
 import { EthiopianDatePicker } from "../components/ui/EthiopianDatePicker";
+import { ListFeedSkeleton } from "../components/ui/Skeleton";
 import { formatCurrency, formatDateByMode } from "../lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
@@ -189,7 +190,7 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
       </View>
 
       {isLoading ? (
-        <ActivityIndicator color={theme.primary} style={{ marginVertical: 20 }} />
+        <ListFeedSkeleton count={3} />
       ) : recentCosts.length === 0 ? (
         <Text style={[styles.emptyText, { color: theme.textMuted }]}>No expense entries logged yet.</Text>
       ) : (
