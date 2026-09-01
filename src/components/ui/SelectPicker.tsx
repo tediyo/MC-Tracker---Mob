@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
 import { ChevronDown, ChevronUp, Check } from "lucide-react-native";
 import { useTheme } from "../../context/ThemeContext";
 
@@ -49,46 +49,53 @@ export function SelectPicker({ label, options, selectedValue, onValueChange }: S
         )}
       </TouchableOpacity>
 
-      {/* Aligned Inline Dropdown List */}
+      {/* Scrollable Dropdown List */}
       {isOpen && (
         <View
           style={[
-            styles.dropdownMenu,
+            styles.dropdownContainer,
             {
               backgroundColor: theme.surface,
               borderColor: theme.cardBorder,
             },
           ]}
         >
-          {options.map((item) => {
-            const isSelected = item.value === selectedValue;
-            return (
-              <TouchableOpacity
-                key={String(item.value)}
-                style={[
-                  styles.optionRow,
-                  { borderBottomColor: theme.cardBorder },
-                  isSelected && { backgroundColor: theme.primaryLight },
-                ]}
-                onPress={() => {
-                  onValueChange(item.value);
-                  setIsOpen(false);
-                }}
-                activeOpacity={0.7}
-              >
-                <Text
+          <ScrollView
+            style={styles.dropdownScrollView}
+            nestedScrollEnabled={true}
+            showsVerticalScrollIndicator={true}
+            keyboardShouldPersistTaps="handled"
+          >
+            {options.map((item) => {
+              const isSelected = item.value === selectedValue;
+              return (
+                <TouchableOpacity
+                  key={String(item.value)}
                   style={[
-                    styles.optionText,
-                    { color: isSelected ? theme.primary : theme.textPrimary },
-                    isSelected && styles.selectedOptionText,
+                    styles.optionRow,
+                    { borderBottomColor: theme.cardBorder },
+                    isSelected && { backgroundColor: theme.primaryLight },
                   ]}
+                  onPress={() => {
+                    onValueChange(item.value);
+                    setIsOpen(false);
+                  }}
+                  activeOpacity={0.7}
                 >
-                  {item.label}
-                </Text>
-                {isSelected && <Check size={16} color={theme.primary} />}
-              </TouchableOpacity>
-            );
-          })}
+                  <Text
+                    style={[
+                      styles.optionText,
+                      { color: isSelected ? theme.primary : theme.textPrimary },
+                      isSelected && styles.selectedOptionText,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  {isSelected && <Check size={16} color={theme.primary} />}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
       )}
     </View>
@@ -119,16 +126,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
   },
-  dropdownMenu: {
+  dropdownContainer: {
     marginTop: 4,
     borderRadius: 12,
     borderWidth: 1,
+    maxHeight: 220,
     overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 4,
+  },
+  dropdownScrollView: {
+    maxHeight: 220,
   },
   optionRow: {
     flexDirection: "row",

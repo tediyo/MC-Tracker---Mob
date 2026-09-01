@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch } from "react-native";
 import {
   UserCheck,
   Lock,
@@ -16,11 +16,10 @@ import {
   PiggyBank,
   Receipt,
   Target,
-  Check,
 } from "lucide-react-native";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
-import { useCalendar, type CalendarMode } from "../context/CalendarContext";
+import { useCalendar } from "../context/CalendarContext";
 import { useAppAlert } from "../context/AlertContext";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -33,8 +32,11 @@ interface SettingRowProps {
   title: string;
   subtitle?: string;
   isDestructive?: boolean;
-  onPress: () => void;
+  onPress?: () => void;
   showDivider?: boolean;
+  hasSwitch?: boolean;
+  switchValue?: boolean;
+  onSwitchChange?: (val: boolean) => void;
 }
 
 function SettingRow({
@@ -44,6 +46,9 @@ function SettingRow({
   isDestructive = false,
   onPress,
   showDivider = true,
+  hasSwitch = false,
+  switchValue = false,
+  onSwitchChange,
 }: SettingRowProps) {
   const { theme } = useTheme();
 
@@ -53,27 +58,44 @@ function SettingRow({
         styles.rowContainer,
         showDivider && { borderBottomWidth: 1, borderBottomColor: theme.cardBorder },
       ]}
-      onPress={onPress}
-      activeOpacity={0.7}
+      onPress={hasSwitch ? () => onSwitchChange?.(!switchValue) : onPress}
+      activeOpacity={hasSwitch ? 0.9 : 0.7}
+      disabled={!hasSwitch && !onPress}
     >
       <View style={styles.rowLeft}>
         <Icon size={20} color={isDestructive ? "#ef4444" : theme.textPrimary} />
-        <Text style={[styles.rowTitle, { color: isDestructive ? "#ef4444" : theme.textPrimary }]}>
-          {title}
-        </Text>
+        <View style={styles.textColumn}>
+          <Text style={[styles.rowTitle, { color: isDestructive ? "#ef4444" : theme.textPrimary }]}>
+            {title}
+          </Text>
+          {subtitle ? (
+            <Text style={[styles.rowSubtitle, { color: theme.textMuted }]}>{subtitle}</Text>
+          ) : null}
+        </View>
       </View>
 
       <View style={styles.rowRight}>
-        {subtitle ? (
-          <Text style={[styles.rowSubtitle, { color: theme.textMuted }]}>{subtitle}</Text>
-        ) : null}
-        {!isDestructive && <ChevronRight size={18} color={theme.textMuted} />}
+        {hasSwitch ? (
+          <Switch
+            value={switchValue}
+            onValueChange={onSwitchChange}
+            trackColor={{ false: theme.cardBorder, true: theme.primary }}
+            thumbColor="#ffffff"
+          />
+        ) : (
+          !isDestructive && <ChevronRight size={18} color={theme.textMuted} />
+        )}
       </View>
     </TouchableOpacity>
   );
 }
 
-export function ProfileScreen({ navigation }: any) {
+interface ProfileScreenProps {
+  onNavigate?: (tab: "dashboard" | "income" | "costs" | "plans" | "profile" | "history") => void;
+  navigation?: any;
+}
+
+export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
   const { user, signOut } = useAuth();
   const { themeMode, theme, setThemeMode } = useTheme();
   const { calendarMode, setCalendarMode } = useCalendar();
@@ -90,8 +112,6 @@ export function ProfileScreen({ navigation }: any) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSavingPassword, setIsSavingPassword] = useState(false);
 
-  const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
-  const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState<string | null>(null);
 
   const openEditEmail = () => {
@@ -196,45 +216,61 @@ export function ProfileScreen({ navigation }: any) {
         </View>
       </Card>
 
-      {/* Main Feature Quick Links */}
+      {/* Main Feature Quick Links (Responsive Navigation) */}
       <View style={[styles.groupCard, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
         <SettingRow
           icon={PiggyBank}
           title="Incomes"
-          onPress={() => navigation?.navigate?.("Income")}
+          subtitle="Manage income entries & categories"
+          onPress={() => (onNavigate ? onNavigate("income") : navigation?.navigate?.("Income"))}
           showDivider={true}
         />
         <SettingRow
           icon={Receipt}
           title="Costs"
-          onPress={() => navigation?.navigate?.("Costs")}
+          subtitle="Track daily expenses & subcategories"
+          onPress={() => (onNavigate ? onNavigate("costs") : navigation?.navigate?.("Costs"))}
           showDivider={true}
         />
         <SettingRow
           icon={Target}
           title="Plans"
-          onPress={() => navigation?.navigate?.("Plans")}
+          subtitle="Set monthly budgets & savings goals"
+          onPress={() => (onNavigate ? onNavigate("plans") : navigation?.navigate?.("Plans"))}
           showDivider={false}
         />
       </View>
 
-      {/* Security & Preferences Section */}
-      <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>Security & Preferences</Text>
+      {/* Preferences & Toggles Section */}
+      <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>Preferences & Toggles</Text>
       <View style={[styles.groupCard, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
+        {/* Gregorian Calendar Toggle */}
         <SettingRow
           icon={Calendar}
-          title="Calendar System"
-          subtitle={calendarMode === "ethiopian" ? "Ethiopian (E.C.)" : "Gregorian (G.C.)"}
-          onPress={() => setIsCalendarModalOpen(true)}
+          title="Gregorian Calendar"
+          subtitle={
+            calendarMode === "gregorian"
+              ? "On (Gregorian G.C. active)"
+              : "Off (Ethiopian E.C. active by default)"
+          }
+          hasSwitch={true}
+          switchValue={calendarMode === "gregorian"}
+          onSwitchChange={(val) => setCalendarMode(val ? "gregorian" : "ethiopian")}
           showDivider={true}
         />
+
+        {/* Dark Theme Toggle */}
         <SettingRow
           icon={Palette}
-          title="Theme Mode"
-          subtitle={themeMode === "dark" ? "Dark" : "Light"}
-          onPress={() => setIsThemeModalOpen(true)}
+          title="Dark Theme"
+          subtitle={themeMode === "dark" ? "On (Dark Mode active)" : "Off (Light Mode active)"}
+          hasSwitch={true}
+          switchValue={themeMode === "dark"}
+          onSwitchChange={(val) => setThemeMode(val ? "dark" : "light")}
           showDivider={true}
         />
+
+        {/* Change Password */}
         <SettingRow
           icon={Shield}
           title="Change Password"
@@ -301,100 +337,6 @@ export function ProfileScreen({ navigation }: any) {
         />
       </View>
 
-      {/* Calendar Selection Modal */}
-      <AppModal
-        visible={isCalendarModalOpen}
-        onClose={() => setIsCalendarModalOpen(false)}
-        title="Calendar System"
-      >
-        <TouchableOpacity
-          style={[
-            styles.optionCard,
-            { borderColor: calendarMode === "ethiopian" ? theme.primary : theme.cardBorder },
-            calendarMode === "ethiopian" && { backgroundColor: theme.primaryLight },
-          ]}
-          onPress={() => {
-            setCalendarMode("ethiopian");
-            setIsCalendarModalOpen(false);
-          }}
-          activeOpacity={0.7}
-        >
-          <View style={styles.optionInfo}>
-            <Text style={[styles.optionTitle, { color: theme.textPrimary }]}>Ethiopian Calendar (E.C.)</Text>
-            <Text style={[styles.optionSub, { color: theme.textMuted }]}>
-              Default 13-month calendar (Meskerem - Pagume)
-            </Text>
-          </View>
-          {calendarMode === "ethiopian" && <Check size={18} color={theme.primary} />}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.optionCard,
-            { borderColor: calendarMode === "gregorian" ? theme.primary : theme.cardBorder },
-            calendarMode === "gregorian" && { backgroundColor: theme.primaryLight },
-          ]}
-          onPress={() => {
-            setCalendarMode("gregorian");
-            setIsCalendarModalOpen(false);
-          }}
-          activeOpacity={0.7}
-        >
-          <View style={styles.optionInfo}>
-            <Text style={[styles.optionTitle, { color: theme.textPrimary }]}>Gregorian Calendar (G.C.)</Text>
-            <Text style={[styles.optionSub, { color: theme.textMuted }]}>
-              Standard 12-month calendar (January - December)
-            </Text>
-          </View>
-          {calendarMode === "gregorian" && <Check size={18} color={theme.primary} />}
-        </TouchableOpacity>
-      </AppModal>
-
-      {/* Theme Selection Modal */}
-      <AppModal
-        visible={isThemeModalOpen}
-        onClose={() => setIsThemeModalOpen(false)}
-        title="Theme Mode"
-      >
-        <TouchableOpacity
-          style={[
-            styles.optionCard,
-            { borderColor: themeMode === "dark" ? theme.primary : theme.cardBorder },
-            themeMode === "dark" && { backgroundColor: theme.primaryLight },
-          ]}
-          onPress={() => {
-            setThemeMode("dark");
-            setIsThemeModalOpen(false);
-          }}
-          activeOpacity={0.7}
-        >
-          <View style={styles.optionInfo}>
-            <Text style={[styles.optionTitle, { color: theme.textPrimary }]}>Dark Mode</Text>
-            <Text style={[styles.optionSub, { color: theme.textMuted }]}>High contrast dark visual theme</Text>
-          </View>
-          {themeMode === "dark" && <Check size={18} color={theme.primary} />}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.optionCard,
-            { borderColor: themeMode === "light" ? theme.primary : theme.cardBorder },
-            themeMode === "light" && { backgroundColor: theme.primaryLight },
-          ]}
-          onPress={() => {
-            setThemeMode("light");
-            setIsThemeModalOpen(false);
-          }}
-          activeOpacity={0.7}
-        >
-          <View style={styles.optionInfo}>
-            <Text style={[styles.optionTitle, { color: theme.textPrimary }]}>Light Mode</Text>
-            <Text style={[styles.optionSub, { color: theme.textMuted }]}>Clean light visual theme</Text>
-          </View>
-          {themeMode === "light" && <Check size={18} color={theme.primary} />}
-        </TouchableOpacity>
-      </AppModal>
-
       {/* General Info Modal */}
       <AppModal
         visible={!!isInfoModalOpen}
@@ -452,7 +394,7 @@ export function ProfileScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   container: { padding: 16, paddingBottom: 120 },
-  headerCard: { flexDirection: "row", items: "center", gap: 14, padding: 16, marginBottom: 16 },
+  headerCard: { flexDirection: "row", alignItems: "center", gap: 14, padding: 16, marginBottom: 16 },
   avatarCircle: {
     width: 52,
     height: 52,
@@ -501,38 +443,24 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
+    flex: 1,
+  },
+  textColumn: {
+    flexDirection: "column",
+    flex: 1,
   },
   rowTitle: {
     fontSize: 15,
     fontWeight: "600",
   },
+  rowSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+  },
   rowRight: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-  },
-  rowSubtitle: {
-    fontSize: 13,
-  },
-  optionCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 10,
-  },
-  optionInfo: {
-    flex: 1,
-  },
-  optionTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    marginBottom: 2,
-  },
-  optionSub: {
-    fontSize: 12,
   },
   infoModalText: {
     fontSize: 14,

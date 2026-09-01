@@ -52,7 +52,7 @@ export function MainNavigator() {
       case "plans":
         return <PlansScreen />;
       case "profile":
-        return <ProfileScreen />;
+        return <ProfileScreen onNavigate={(tab) => setActiveTab(tab)} />;
       case "history":
         return <HistoryScreen initialTab={historySource} onBack={() => setActiveTab(historySource)} />;
       case "dashboard":

@@ -9,6 +9,19 @@ export function formatEthiopianDate(isoDate: string): string {
   return `${pad(eth.month)}/${pad(eth.day)}/${eth.year}`;
 }
 
+export function formatDateByMode(isoDate: string, calendarMode: "ethiopian" | "gregorian" = "ethiopian"): string {
+  if (calendarMode === "gregorian") {
+    try {
+      const d = new Date(isoDate);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
+    } catch {
+      return isoDate;
+    }
+  }
+  return formatEthiopianDate(isoDate);
+}
+
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",

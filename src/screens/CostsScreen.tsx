@@ -11,13 +11,14 @@ import {
 } from "../shared-types";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { useCalendar } from "../context/CalendarContext";
 import { useAppAlert } from "../context/AlertContext";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { SelectPicker } from "../components/ui/SelectPicker";
 import { EthiopianDatePicker } from "../components/ui/EthiopianDatePicker";
-import { formatCurrency, formatEthiopianDate } from "../lib/utils";
+import { formatCurrency, formatDateByMode } from "../lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
 
@@ -31,6 +32,7 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
   const { user } = useAuth();
   const userId = user?.id || "";
   const { theme } = useTheme();
+  const { calendarMode } = useCalendar();
   const { showAlert } = useAppAlert();
   const queryClient = useQueryClient();
 
@@ -195,7 +197,7 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
           <Card key={item.id} style={styles.historyCard}>
             <View style={styles.historyRow}>
               <View style={styles.historyLeft}>
-                <Text style={[styles.historyDate, { color: theme.textMuted }]}>{formatEthiopianDate(item.date)}</Text>
+                <Text style={[styles.historyDate, { color: theme.textMuted }]}>{formatDateByMode(item.date, calendarMode)}</Text>
 
                 <View style={styles.badgeRow}>
                   <View style={[styles.catBadge, { backgroundColor: theme.primaryLight }]}>

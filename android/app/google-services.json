@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "326733826291",
+    "project_id": "mctracker-f5f62",
+    "storage_bucket": "mctracker-f5f62.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:326733826291:android:740ad429c9bb32eada4f86",
+        "android_client_info": {
+          "package_name": "com.anonymous.mctrackermobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB1IVZWbtA_tzfZlG8jwJT8LFYEbaGxF7I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

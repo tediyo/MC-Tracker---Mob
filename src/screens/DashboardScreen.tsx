@@ -29,6 +29,7 @@ import {
 } from "../shared-types";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { useCalendar } from "../context/CalendarContext";
 import { useAppAlert } from "../context/AlertContext";
 import { Card } from "../components/ui/Card";
 import { SelectPicker } from "../components/ui/SelectPicker";
@@ -68,6 +69,7 @@ export function DashboardScreen() {
   const { user } = useAuth();
   const userId = user?.id || "";
   const { themeMode, theme, toggleTheme } = useTheme();
+  const { calendarMode } = useCalendar();
   const { showAlert } = useAppAlert();
 
   const currentEth = useMemo(() => getEthiopianDate(new Date()), []);
@@ -256,14 +258,27 @@ export function DashboardScreen() {
 
   const monthName = ETHIOPIAN_MONTHS[refMonth - 1]?.nameEn || `Month ${refMonth}`;
 
-  // What the nav row (and the PDF report's period line) should say for the active pill -
-  // "Nehase 2018 E.C." alone was misleading once Daily/Weekly/Yearly actually filter data.
+  const GREGORIAN_MONTHS = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
   const periodLabel = useMemo(() => {
+    if (calendarMode === "gregorian") {
+      const d = rangeStart;
+      const gYear = d.getFullYear();
+      const gMonthName = GREGORIAN_MONTHS[d.getMonth()];
+      if (timeframe === "yearly") return `${gYear} G.C.`;
+      if (timeframe === "weekly") return `Week of ${gMonthName} ${d.getDate()}, ${gYear}`;
+      if (timeframe === "daily") return `${gMonthName} ${d.getDate()}, ${gYear}`;
+      return `${gMonthName} ${gYear}`;
+    }
+
     if (timeframe === "yearly") return `${refYear} E.C.`;
     if (timeframe === "weekly") return `Week ${refWeek} - ${monthName} ${refYear} E.C.`;
     if (timeframe === "daily") return `${refDay} ${monthName} ${refYear} E.C.`;
     return `${monthName} ${refYear} E.C.`;
-  }, [timeframe, refYear, refMonth, refWeek, refDay, monthName]);
+  }, [calendarMode, timeframe, rangeStart, refYear, refMonth, refWeek, refDay, monthName]);
 
   const handleDownloadReport = async () => {
     if (!dashboardData) return;

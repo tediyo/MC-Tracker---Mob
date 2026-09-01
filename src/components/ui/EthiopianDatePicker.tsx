@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Calendar, X } from "lucide-react-native";
 import { useTheme } from "../../context/ThemeContext";
+import { useCalendar } from "../../context/CalendarContext";
 import { AppModal } from "./Modal";
 import { SelectPicker } from "./SelectPicker";
 import { ETHIOPIAN_MONTHS, getEthiopianDate, toGregorianDate, getDaysInEthiopianMonth } from "../../shared-types";
@@ -9,21 +10,34 @@ import { formatEthiopianDate } from "../../lib/utils";
 
 interface EthiopianDatePickerProps {
   label?: string;
-  value: string; // Gregorian ISO "YYYY-MM-DD", or "" for unset (e.g. an unapplied filter)
+  value: string; // Gregorian ISO "YYYY-MM-DD", or "" for unset
   onChange: (isoDate: string) => void;
   required?: boolean;
-  /** Shown in the trigger when value is "" - e.g. "Any date" for an optional filter. */
   placeholder?: string;
-  /** Shows a small clear (x) button next to the trigger when a value is set - for
-   * optional fields like filters, not the required date on an entry form. */
   clearable?: boolean;
 }
 
-const monthOptions = ETHIOPIAN_MONTHS.map((m) => ({ label: m.nameEn, value: m.number }));
+const GREGORIAN_MONTHS = [
+  { label: "January", value: 1 },
+  { label: "February", value: 2 },
+  { label: "March", value: 3 },
+  { label: "April", value: 4 },
+  { label: "May", value: 5 },
+  { label: "June", value: 6 },
+  { label: "July", value: 7 },
+  { label: "August", value: 8 },
+  { label: "September", value: 9 },
+  { label: "October", value: 10 },
+  { label: "November", value: 11 },
+  { label: "December", value: 12 },
+];
 
-/** Date field styled/behaved like the rest of the app's inputs+dropdowns (Input label,
- * SelectPicker-driven modal) but picks an Ethiopian year/month/day instead of typing a
- * raw Gregorian string - converts to/from Gregorian ISO under the hood for storage. */
+const ethMonthOptions = ETHIOPIAN_MONTHS.map((m) => ({ label: `${m.nameEn} (${m.nameAm})`, value: m.number }));
+
+function getDaysInGregorianMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
 export function EthiopianDatePicker({
   label = "Date",
   value,
@@ -33,41 +47,84 @@ export function EthiopianDatePicker({
   clearable = false,
 }: EthiopianDatePickerProps) {
   const { theme } = useTheme();
+  const { calendarMode } = useCalendar();
   const [isOpen, setIsOpen] = useState(false);
-  const [draftYear, setDraftYear] = useState(1);
-  const [draftMonth, setDraftMonth] = useState(1);
-  const [draftDay, setDraftDay] = useState(1);
+
+  const [draftYear, setDraftYear] = useState(2026);
+  const [draftMonth, setDraftMonth] = useState(8);
+  const [draftDay, setDraftDay] = useState(15);
+
+  const isGregorian = calendarMode === "gregorian";
 
   const selectedEth = value ? getEthiopianDate(value) : null;
+  const selectedGreg = value ? new Date(value) : null;
 
   const openPicker = () => {
-    const base = selectedEth || getEthiopianDate(new Date().toISOString().slice(0, 10));
-    setDraftYear(base.year);
-    setDraftMonth(base.month);
-    setDraftDay(base.day);
+    if (isGregorian) {
+      const d = value ? new Date(value) : new Date();
+      setDraftYear(d.getFullYear());
+      setDraftMonth(d.getMonth() + 1);
+      setDraftDay(d.getDate());
+    } else {
+      const base = selectedEth || getEthiopianDate(new Date().toISOString().slice(0, 10));
+      setDraftYear(base.year);
+      setDraftMonth(base.month);
+      setDraftDay(base.day);
+    }
     setIsOpen(true);
   };
 
   const handleMonthChange = (month: number) => {
     setDraftMonth(month);
-    const maxDay = getDaysInEthiopianMonth(draftYear, month);
+    const maxDay = isGregorian
+      ? getDaysInGregorianMonth(draftYear, month)
+      : getDaysInEthiopianMonth(draftYear, month);
     if (draftDay > maxDay) setDraftDay(maxDay);
   };
 
   const handleConfirm = () => {
-    const gregorian = toGregorianDate(draftYear, draftMonth, draftDay);
-    onChange(gregorian.toISOString().slice(0, 10));
+    if (isGregorian) {
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const iso = `${draftYear}-${pad(draftMonth)}-${pad(draftDay)}`;
+      onChange(iso);
+    } else {
+      const gregorian = toGregorianDate(draftYear, draftMonth, draftDay);
+      onChange(gregorian.toISOString().slice(0, 10));
+    }
     setIsOpen(false);
   };
 
+  // Options for Picker
   const yearOptions = Array.from({ length: 11 }, (_, i) => draftYear - 5 + i).map((y) => ({
-    label: `${y} E.C.`,
+    label: isGregorian ? `${y}` : `${y} E.C.`,
     value: y,
   }));
-  const dayOptions = Array.from({ length: getDaysInEthiopianMonth(draftYear, draftMonth) }, (_, i) => ({
+
+  const monthOptions = isGregorian ? GREGORIAN_MONTHS : ethMonthOptions;
+
+  const maxDays = isGregorian
+    ? getDaysInGregorianMonth(draftYear, draftMonth)
+    : getDaysInEthiopianMonth(draftYear, draftMonth);
+
+  const dayOptions = Array.from({ length: maxDays }, (_, i) => ({
     label: String(i + 1),
     value: i + 1,
   }));
+
+  // Trigger Display Text
+  const triggerText = React.useMemo(() => {
+    if (!value) return placeholder;
+    if (isGregorian) {
+      try {
+        const d = new Date(value);
+        const pad = (n: number) => String(n).padStart(2, "0");
+        return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
+      } catch {
+        return value;
+      }
+    }
+    return formatEthiopianDate(value);
+  }, [value, isGregorian, placeholder]);
 
   return (
     <View style={styles.container}>
@@ -86,10 +143,10 @@ export function EthiopianDatePicker({
           <Text
             style={[
               styles.triggerText,
-              { color: selectedEth ? theme.textPrimary : theme.textMuted },
+              { color: value ? theme.textPrimary : theme.textMuted },
             ]}
           >
-            {selectedEth ? formatEthiopianDate(value) : placeholder}
+            {triggerText}
           </Text>
           <Calendar size={18} color={theme.primary} />
         </TouchableOpacity>
@@ -110,7 +167,7 @@ export function EthiopianDatePicker({
       <AppModal
         visible={isOpen}
         onClose={() => setIsOpen(false)}
-        title="Select Date"
+        title={isGregorian ? "Select Gregorian Date" : "Select Ethiopian Date"}
         onConfirm={handleConfirm}
         confirmLabel="Done"
       >
