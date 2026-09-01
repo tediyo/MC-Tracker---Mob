@@ -1,4 +1,4 @@
-import { getDaysInMonth } from "date-fns";
+import { getDaysInMonth, endOfDay } from "date-fns";
 import { getPeriodRange, type TimeFrame, type PeriodRange } from "./period";
 import { sumIncome, sumCosts, type DateRange } from "./aggregate";
 import type { IncomeRow, CostRow, PlanRow } from "../db";
@@ -34,8 +34,15 @@ export function calculatePercentChange(current: number, previous: number): numbe
   return ((current - previous) / Math.abs(previous)) * 100;
 }
 
-function capEnd(range: DateRange, referenceDate: Date): DateRange {
-  return { start: range.start, end: range.end.getTime() > referenceDate.getTime() ? referenceDate : range.end };
+export function capEnd(range: DateRange, _referenceDate?: Date): DateRange {
+  const now = new Date();
+  // If the period has already ended in the past, return the full period range
+  if (range.end.getTime() <= now.getTime()) {
+    return range;
+  }
+  // If we are currently inside this period, cap at endOfDay(now) or range.end
+  const cappedEnd = endOfDay(now).getTime() < range.end.getTime() ? endOfDay(now) : range.end;
+  return { start: range.start, end: cappedEnd };
 }
 
 function findPlanForMonth(plans: readonly PlanRow[], year: number, month: number): PlanRow | undefined {
