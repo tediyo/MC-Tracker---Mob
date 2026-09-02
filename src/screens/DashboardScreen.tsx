@@ -28,7 +28,10 @@ import {
   getDaysInEthiopianMonth,
   COST_CATEGORY_LABELS,
   COST_SUBCATEGORY_LABELS,
+  INCOME_SOURCE_TYPE_LABELS,
+  type CostCategory,
   type CostSubcategory,
+  type IncomeSourceType,
   type TimeFrame,
 } from "../shared-types";
 import { useAuth } from "../context/AuthContext";
@@ -339,6 +342,49 @@ export function DashboardScreen() {
         result: "base64",
       });
 
+      const startIso = formatIso(rangeStart);
+      const endIso = formatIso(rangeEnd);
+
+      const [{ data: fetchedCosts }, { data: fetchedIncomes }] = await Promise.all([
+        supabase
+          .from("costs")
+          .select("*")
+          .eq("user_id", userId)
+          .gte("date", startIso)
+          .lte("date", endIso),
+        supabase
+          .from("incomes")
+          .select("*")
+          .eq("user_id", userId)
+          .gte("date", startIso)
+          .lte("date", endIso),
+      ]);
+
+      const recentTxList = [
+        ...(fetchedCosts || []).map((c: any) => ({
+          date: c.date,
+          type: "cost" as const,
+          category: COST_CATEGORY_LABELS[c.category as CostCategory] || c.category,
+          description: c.description || COST_SUBCATEGORY_LABELS[c.subcategory as CostSubcategory] || c.subcategory || "-",
+          amount: Number(c.amount),
+        })),
+        ...(fetchedIncomes || []).map((i: any) => ({
+          date: i.date,
+          type: "income" as const,
+          category: INCOME_SOURCE_TYPE_LABELS[i.source_type as IncomeSourceType] || i.source_type,
+          description: i.description || "Income Deposit",
+          amount: Number(i.amount),
+        })),
+      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      const trendList = [
+        {
+          bucketLabel: periodLabel,
+          income: dashboardData.totalIncome,
+          cost: dashboardData.totalCosts,
+        },
+      ];
+
       const html = buildOverviewReportHtml({
         periodLabel,
         totalIncome: dashboardData.totalIncome,
@@ -352,6 +398,8 @@ export function DashboardScreen() {
         extraCost: dashboardData.extraCost,
         pieChartBase64,
         incomeCostPieBase64,
+        trendIntervals: trendList,
+        recentTransactions: recentTxList,
       });
 
       await RNPrint.print({ html });
@@ -972,18 +1020,6 @@ export function DashboardScreen() {
         </>
       )}
       </ScrollView>
-
-      {/* Floating Action Button for Quick Add */}
-      <TouchableOpacity
-        style={[styles.fabBtn, { backgroundColor: theme.primary }]}
-        onPress={() => setIsQuickAddOpen(true)}
-        activeOpacity={0.85}
-      >
-        <Plus size={26} color="#ffffff" strokeWidth={2.5} />
-      </TouchableOpacity>
-
-      {/* Quick Add Modal */}
-      <QuickAddModal visible={isQuickAddOpen} onClose={() => setIsQuickAddOpen(false)} />
     </View>
   );
 }

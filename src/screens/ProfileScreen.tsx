@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Linking, Platform } from "react-native";
 import {
   UserCheck,
   Palette,
@@ -12,13 +12,15 @@ import {
   BookOpen,
   FileText,
   LogOut,
-  PiggyBank,
+  TrendingUp,
   Receipt,
   Target,
+  Sparkles,
 } from "lucide-react-native";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { useCalendar } from "../context/CalendarContext";
+import { useLiveMode } from "../context/LiveModeContext";
 import { useAppAlert } from "../context/AlertContext";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
@@ -97,12 +99,17 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
   const { user, signOut } = useAuth();
   const { themeMode, theme, setThemeMode } = useTheme();
   const { calendarMode, setCalendarMode } = useCalendar();
+  const { isLiveMode, setIsLiveMode } = useLiveMode();
   const { showAlert } = useAppAlert();
 
-  // Modals state
-  const [isEditingEmail, setIsEditingEmail] = useState(false);
+  // Profile data & Modals state
+  const [profileName, setProfileName] = useState(
+    user?.user_metadata?.name || user?.user_metadata?.full_name || ""
+  );
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
-  const [isSavingEmail, setIsSavingEmail] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -112,27 +119,68 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
 
   const [isInfoModalOpen, setIsInfoModalOpen] = useState<string | null>(null);
 
-  const openEditEmail = () => {
+  useEffect(() => {
+    if (user?.id) {
+      supabase
+        .from("users")
+        .select("name")
+        .eq("id", user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data?.name) {
+            setProfileName(data.name);
+          }
+        });
+    }
+  }, [user?.id]);
+
+  const openEditProfile = () => {
+    setNewName(profileName);
     setNewEmail(user?.email || "");
-    setIsEditingEmail(true);
+    setIsEditingProfile(true);
   };
 
-  const handleSaveEmail = async () => {
-    const trimmed = newEmail.trim();
-    if (!trimmed || trimmed === user?.email) {
-      setIsEditingEmail(false);
+  const handleSaveProfile = async () => {
+    const trimmedName = newName.trim();
+    const trimmedEmail = newEmail.trim();
+
+    if (!trimmedEmail) {
+      showAlert("Error", "Email address cannot be empty.");
       return;
     }
-    setIsSavingEmail(true);
+
+    setIsSavingProfile(true);
     try {
-      const { error } = await supabase.auth.updateUser({ email: trimmed });
-      if (error) throw error;
-      setIsEditingEmail(false);
-      showAlert("Confirmation Sent", `Check ${trimmed} for a link to confirm your new email.`);
+      if (user?.id) {
+        await supabase
+          .from("users")
+          .update({ name: trimmedName, email: trimmedEmail })
+          .eq("id", user.id);
+      }
+
+      let emailChanged = false;
+      if (trimmedEmail !== user?.email) {
+        const { error } = await supabase.auth.updateUser({ email: trimmedEmail });
+        if (error) throw error;
+        emailChanged = true;
+      }
+
+      await supabase.auth.updateUser({
+        data: { name: trimmedName, full_name: trimmedName },
+      });
+
+      setProfileName(trimmedName);
+      setIsEditingProfile(false);
+
+      if (emailChanged) {
+        showAlert("Profile Updated", `Check ${trimmedEmail} for a link to confirm your email update.`);
+      } else {
+        showAlert("Success", "Profile updated successfully.");
+      }
     } catch (err: any) {
-      showAlert("Error", err.message || "Failed to update email");
+      showAlert("Error", err.message || "Failed to update profile");
     } finally {
-      setIsSavingEmail(false);
+      setIsSavingProfile(false);
     }
   };
 
@@ -185,6 +233,10 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
     ]);
   };
 
+  const avatarLetter = profileName.trim()
+    ? profileName.trim().charAt(0).toUpperCase()
+    : user?.email?.charAt(0).toUpperCase() || "U";
+
   return (
     <ScrollView
       style={[styles.flex, { backgroundColor: theme.background }]}
@@ -195,14 +247,16 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
       <Card style={styles.headerCard}>
         <View style={[styles.avatarCircle, { backgroundColor: theme.primaryLight, borderColor: theme.primary }]}>
           <Text style={[styles.avatarText, { color: theme.primary }]}>
-            {user?.email?.charAt(0).toUpperCase() || "U"}
+            {avatarLetter}
           </Text>
         </View>
 
         <View style={styles.headerInfo}>
           <View style={styles.headerNameRow}>
-            <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Your Profile</Text>
-            <TouchableOpacity onPress={openEditEmail} activeOpacity={0.7} style={styles.editBtn}>
+            <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>
+              {profileName.trim() || "Your Profile"}
+            </Text>
+            <TouchableOpacity onPress={openEditProfile} activeOpacity={0.7} style={styles.editBtn}>
               <Pencil size={14} color={theme.primary} />
             </TouchableOpacity>
           </View>
@@ -217,7 +271,7 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
       {/* Main Feature Quick Links (Responsive Navigation) */}
       <View style={[styles.groupCard, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
         <SettingRow
-          icon={PiggyBank}
+          icon={TrendingUp}
           title="Incomes"
           subtitle="Manage income entries & categories"
           onPress={() => (onNavigate ? onNavigate("income") : navigation?.navigate?.("Income"))}
@@ -265,6 +319,21 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
           hasSwitch={true}
           switchValue={themeMode === "dark"}
           onSwitchChange={(val) => setThemeMode(val ? "dark" : "light")}
+          showDivider={true}
+        />
+
+        {/* Live Floating Icon Toggle */}
+        <SettingRow
+          icon={Sparkles}
+          title="Live Floating Icon"
+          subtitle={
+            isLiveMode
+              ? "On (Floating action button active)"
+              : "Off (Hidden by default)"
+          }
+          hasSwitch={true}
+          switchValue={isLiveMode}
+          onSwitchChange={(val) => setIsLiveMode(val)}
           showDivider={true}
         />
 
@@ -344,15 +413,22 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
         <Text style={[styles.infoModalText, { color: theme.textPrimary }]}>{isInfoModalOpen}</Text>
       </AppModal>
 
-      {/* Edit Email Modal */}
+      {/* Edit Profile Modal */}
       <AppModal
-        visible={isEditingEmail}
-        onClose={() => setIsEditingEmail(false)}
-        title="Edit Email"
-        onConfirm={handleSaveEmail}
+        visible={isEditingProfile}
+        onClose={() => setIsEditingProfile(false)}
+        title="Edit Profile"
+        onConfirm={handleSaveProfile}
         confirmLabel="Save"
-        confirmLoading={isSavingEmail}
+        confirmLoading={isSavingProfile}
       >
+        <Input
+          label="Full Name"
+          value={newName}
+          onChangeText={setNewName}
+          placeholder="John Doe"
+          autoCapitalize="words"
+        />
         <Input
           label="Email Address"
           value={newEmail}

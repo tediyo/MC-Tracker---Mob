@@ -17,9 +17,9 @@ class MainApplication : Application(), ReactApplication {
   override val reactNativeHost: ReactNativeHost =
       object : DefaultReactNativeHost(this) {
         override fun getPackages(): List<ReactPackage> {
-          // Packages that cannot be autolinked yet can be added manually here, for example:
-          // packages.add(new MyReactNativePackage());
-          return PackageList(this).packages
+          val packages = PackageList(this).packages.toMutableList()
+          packages.add(FloatingWidgetPackage())
+          return packages
         }
 
         // ReactNativeHost's own default is "index.android" (see its Javadoc), which has no

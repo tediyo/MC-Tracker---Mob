@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "./src/context/AuthContext";
 import { ThemeProvider } from "./src/context/ThemeContext";
 import { CalendarProvider } from "./src/context/CalendarContext";
+import { LiveModeProvider } from "./src/context/LiveModeContext";
 import { AlertProvider } from "./src/context/AlertContext";
 import { MainNavigator } from "./src/navigation/MainNavigator";
 import { ErrorBoundary } from "./src/components/ErrorBoundary";
@@ -29,12 +30,14 @@ export default function App() {
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
             <CalendarProvider>
-              <AlertProvider>
-                <AuthProvider>
-                  <StatusBar barStyle="light-content" />
-                  <MainNavigator />
-                </AuthProvider>
-              </AlertProvider>
+              <LiveModeProvider>
+                <AlertProvider>
+                  <AuthProvider>
+                    <StatusBar barStyle="light-content" />
+                    <MainNavigator />
+                  </AuthProvider>
+                </AlertProvider>
+              </LiveModeProvider>
             </CalendarProvider>
           </ThemeProvider>
         </QueryClientProvider>

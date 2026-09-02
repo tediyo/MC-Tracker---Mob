@@ -12,11 +12,17 @@ export function AuthScreen() {
   const { theme } = useTheme();
   const { showAlert } = useAppAlert();
   const [isSignUp, setIsSignUp] = useState(false);
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleAuth = async () => {
+    if (isSignUp && !name.trim()) {
+      showAlert("Error", "Please enter your name");
+      return;
+    }
+
     if (!email.trim() || !password.trim()) {
       showAlert("Error", "Please enter both email and password");
       return;
@@ -28,6 +34,12 @@ export function AuthScreen() {
         const { error } = await supabase.auth.signUp({
           email: email.trim(),
           password: password.trim(),
+          options: {
+            data: {
+              name: name.trim(),
+              full_name: name.trim(),
+            },
+          },
         });
         if (error) throw error;
         showAlert("Success", "Account created successfully! You can now log in.");
@@ -62,8 +74,18 @@ export function AuthScreen() {
             {isSignUp ? "Create Account" : "Sign In"}
           </Text>
           <Text style={[styles.cardHeaderSubtitle, { color: theme.textMuted }]}>
-            {isSignUp ? "Enter your email & password to sign up" : "Access your budget & expense tracker"}
+            {isSignUp ? "Enter your details to sign up" : "Access your budget & expense tracker"}
           </Text>
+
+          {isSignUp && (
+            <Input
+              label="Full Name"
+              placeholder="John Doe"
+              value={name}
+              onChangeText={setName}
+              autoCapitalize="words"
+            />
+          )}
 
           <Input
             label="Email Address"
@@ -91,7 +113,10 @@ export function AuthScreen() {
 
           <TouchableOpacity
             style={styles.toggleBtn}
-            onPress={() => setIsSignUp(!isSignUp)}
+            onPress={() => {
+              setIsSignUp(!isSignUp);
+              setName("");
+            }}
           >
             <Text style={[styles.toggleText, { color: theme.primary }]}>
               {isSignUp ? "Already have an account? Sign In" : "Don't have an account? Sign Up"}
