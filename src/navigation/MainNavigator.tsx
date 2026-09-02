@@ -1,6 +1,6 @@
-import React, { useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Platform } from "react-native";
-import { Home, PiggyBank, Receipt, Target, User } from "lucide-react-native";
+import React, { useState, useEffect, useCallback } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Platform, NativeModules, AppState } from "react-native";
+import { Home, TrendingUp, Receipt, Target, User } from "lucide-react-native";
 import { useTheme } from "../context/ThemeContext";
 import { DashboardScreen } from "../screens/DashboardScreen";
 import { IncomeScreen } from "../screens/IncomeScreen";
@@ -11,6 +11,9 @@ import { HistoryScreen, type HistoryTab } from "../screens/HistoryScreen";
 import { useAuth } from "../context/AuthContext";
 import { AuthScreen } from "../screens/AuthScreen";
 import { AppLogo } from "../components/ui/AppLogo";
+import { QuickAddModal } from "../components/ui/QuickAddModal";
+
+const { FloatingWidgetModule } = NativeModules;
 
 export type TabType = "dashboard" | "income" | "costs" | "plans" | "profile" | "history";
 
@@ -18,15 +21,32 @@ export function MainNavigator() {
   const { session, loading } = useAuth();
   const { themeMode, theme } = useTheme();
   const [activeTab, setActiveTab] = useState<TabType>("dashboard");
-  // Which tab History was opened from, and (as HistoryScreen's own initial toggle) which
-  // section it should open on - "history" isn't a bottom-nav tab itself.
   const [historySource, setHistorySource] = useState<HistoryTab>("income");
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
 
   const isDark = themeMode === "dark";
 
+  const checkQuickAddIntent = useCallback(() => {
+    if (Platform.OS === "android" && FloatingWidgetModule?.consumeQuickAddRequest) {
+      FloatingWidgetModule.consumeQuickAddRequest().then((requested: boolean) => {
+        if (requested) {
+          setIsQuickAddOpen(true);
+        }
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    checkQuickAddIntent();
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        checkQuickAddIntent();
+      }
+    });
+    return () => sub.remove();
+  }, [checkQuickAddIntent]);
+
   if (loading) {
-    // Full-screen logo, same treatment as the native splash screen (drawable/splashscreen.xml)
-    // - so there's no visible handoff from splash to a plain "Loading..." text screen.
     return (
       <View style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
         <AppLogo width={220} />
@@ -52,7 +72,7 @@ export function MainNavigator() {
       case "plans":
         return <PlansScreen />;
       case "profile":
-        return <ProfileScreen />;
+        return <ProfileScreen onNavigate={(tab) => setActiveTab(tab)} />;
       case "history":
         return <HistoryScreen initialTab={historySource} onBack={() => setActiveTab(historySource)} />;
       case "dashboard":
@@ -63,7 +83,7 @@ export function MainNavigator() {
 
   const mainTabs: { type: TabType; label: string; icon: any }[] = [
     { type: "dashboard", label: "Home", icon: Home },
-    { type: "income", label: "Income", icon: PiggyBank },
+    { type: "income", label: "Income", icon: TrendingUp },
     { type: "costs", label: "Costs", icon: Receipt },
     { type: "plans", label: "Plans", icon: Target },
   ];
@@ -131,6 +151,9 @@ export function MainNavigator() {
           <User size={24} color="#ffffff" strokeWidth={2.2} />
         </TouchableOpacity>
       </View>
+
+      {/* Quick Add Expense & Income Modal opened directly when tapping the Live Floating Overlay */}
+      <QuickAddModal visible={isQuickAddOpen} onClose={() => setIsQuickAddOpen(false)} />
     </SafeAreaView>
   );
 }

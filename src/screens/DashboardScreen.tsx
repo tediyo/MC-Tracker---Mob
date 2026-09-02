@@ -18,6 +18,8 @@ import {
   Sun,
   Moon,
   Download,
+  Plus,
+  Target,
 } from "lucide-react-native";
 import {
   ETHIOPIAN_MONTHS,
@@ -25,18 +27,29 @@ import {
   toGregorianDate,
   getDaysInEthiopianMonth,
   COST_CATEGORY_LABELS,
+  COST_SUBCATEGORY_LABELS,
+  INCOME_SOURCE_TYPE_LABELS,
+  type CostCategory,
+  type CostSubcategory,
+  type IncomeSourceType,
   type TimeFrame,
 } from "../shared-types";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { useCalendar } from "../context/CalendarContext";
 import { useAppAlert } from "../context/AlertContext";
 import { Card } from "../components/ui/Card";
 import { SelectPicker } from "../components/ui/SelectPicker";
+import { EthiopianDatePicker } from "../components/ui/EthiopianDatePicker";
 import { SimpleBarChart } from "../components/charts/BarChart";
 import { SimpleLineChart } from "../components/charts/LineChart";
 import { SimplePieChart } from "../components/charts/PieChart";
+import { ProgressRing } from "../components/charts/ProgressRing";
+import { QuickAddModal } from "../components/ui/QuickAddModal";
+import { DashboardCardsSkeleton, ChartCardSkeleton } from "../components/ui/Skeleton";
 import { formatCurrency } from "../lib/utils";
 import { buildOverviewReportHtml } from "../lib/reportGenerator";
+import { checkBudgetThresholds } from "../services/notificationService";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
 import { getComparisonData, type ComparisonMode } from "../../src/lib/comparisonHelper";
@@ -68,6 +81,7 @@ export function DashboardScreen() {
   const { user } = useAuth();
   const userId = user?.id || "";
   const { themeMode, theme, toggleTheme } = useTheme();
+  const { calendarMode } = useCalendar();
   const { showAlert } = useAppAlert();
 
   const currentEth = useMemo(() => getEthiopianDate(new Date()), []);
@@ -84,8 +98,8 @@ export function DashboardScreen() {
   const incomeCostPieRef = useRef<View>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
-  // Timeframe switcher state. refWeek/refDay only matter for the "weekly"/"daily" pills -
-  // both resolve within the navigated (refYear, refMonth), same as the arrows below.
+  const [analyticsFilter, setAnalyticsFilter] = useState<"all" | "incomes" | "costs">("all");
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState<boolean>(false);
   const [timeframe, setTimeframe] = useState<TimeFrame>("monthly");
   const [refYear, setRefYear] = useState<number>(currentEth.year);
   const [refMonth, setRefMonth] = useState<number>(currentEth.month);
@@ -193,6 +207,22 @@ export function DashboardScreen() {
         .filter((c) => c.category === "extra")
         .reduce((sum, c) => sum + Number(c.amount), 0);
 
+      // Top 3 Expense Subcategories
+      const subcategoryMap: Record<string, number> = {};
+      (costs || []).forEach((c) => {
+        const sub = c.subcategory || "other";
+        subcategoryMap[sub] = (subcategoryMap[sub] || 0) + Number(c.amount);
+      });
+
+      const topSubcategories = Object.entries(subcategoryMap)
+        .map(([sub, amount]) => ({ subcategory: sub as CostSubcategory, amount }))
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 3);
+
+      if (costLimit && costLimit > 0) {
+        checkBudgetThresholds(totalCost, costLimit);
+      }
+
       return {
         totalIncome: totalInc,
         totalCosts: totalCost,
@@ -203,10 +233,17 @@ export function DashboardScreen() {
         basicCost,
         fancyCost,
         extraCost,
+        topSubcategories,
       };
     },
     enabled: !!userId,
   });
+
+  const savingsProgressPct = useMemo(() => {
+    if (!dashboardData || !dashboardData.savingsGoal || dashboardData.savingsGoal <= 0) return 0;
+    const netSavings = Math.max(dashboardData.netProfitLoss, 0);
+    return (netSavings / dashboardData.savingsGoal) * 100;
+  }, [dashboardData]);
 
   // Fetch Period Comparison Data
   const { data: compData, isLoading: isCompLoading } = useQuery({
@@ -256,14 +293,27 @@ export function DashboardScreen() {
 
   const monthName = ETHIOPIAN_MONTHS[refMonth - 1]?.nameEn || `Month ${refMonth}`;
 
-  // What the nav row (and the PDF report's period line) should say for the active pill -
-  // "Nehase 2018 E.C." alone was misleading once Daily/Weekly/Yearly actually filter data.
+  const GREGORIAN_MONTHS = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
   const periodLabel = useMemo(() => {
+    if (calendarMode === "gregorian") {
+      const d = rangeStart;
+      const gYear = d.getFullYear();
+      const gMonthName = GREGORIAN_MONTHS[d.getMonth()];
+      if (timeframe === "yearly") return `${gYear} G.C.`;
+      if (timeframe === "weekly") return `Week of ${gMonthName} ${d.getDate()}, ${gYear}`;
+      if (timeframe === "daily") return `${gMonthName} ${d.getDate()}, ${gYear}`;
+      return `${gMonthName} ${gYear}`;
+    }
+
     if (timeframe === "yearly") return `${refYear} E.C.`;
     if (timeframe === "weekly") return `Week ${refWeek} - ${monthName} ${refYear} E.C.`;
     if (timeframe === "daily") return `${refDay} ${monthName} ${refYear} E.C.`;
     return `${monthName} ${refYear} E.C.`;
-  }, [timeframe, refYear, refMonth, refWeek, refDay, monthName]);
+  }, [calendarMode, timeframe, rangeStart, refYear, refMonth, refWeek, refDay, monthName]);
 
   const handleDownloadReport = async () => {
     if (!dashboardData) return;
@@ -292,6 +342,49 @@ export function DashboardScreen() {
         result: "base64",
       });
 
+      const startIso = formatIso(rangeStart);
+      const endIso = formatIso(rangeEnd);
+
+      const [{ data: fetchedCosts }, { data: fetchedIncomes }] = await Promise.all([
+        supabase
+          .from("costs")
+          .select("*")
+          .eq("user_id", userId)
+          .gte("date", startIso)
+          .lte("date", endIso),
+        supabase
+          .from("incomes")
+          .select("*")
+          .eq("user_id", userId)
+          .gte("date", startIso)
+          .lte("date", endIso),
+      ]);
+
+      const recentTxList = [
+        ...(fetchedCosts || []).map((c: any) => ({
+          date: c.date,
+          type: "cost" as const,
+          category: COST_CATEGORY_LABELS[c.category as CostCategory] || c.category,
+          description: c.description || COST_SUBCATEGORY_LABELS[c.subcategory as CostSubcategory] || c.subcategory || "-",
+          amount: Number(c.amount),
+        })),
+        ...(fetchedIncomes || []).map((i: any) => ({
+          date: i.date,
+          type: "income" as const,
+          category: INCOME_SOURCE_TYPE_LABELS[i.source_type as IncomeSourceType] || i.source_type,
+          description: i.description || "Income Deposit",
+          amount: Number(i.amount),
+        })),
+      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      const trendList = [
+        {
+          bucketLabel: periodLabel,
+          income: dashboardData.totalIncome,
+          cost: dashboardData.totalCosts,
+        },
+      ];
+
       const html = buildOverviewReportHtml({
         periodLabel,
         totalIncome: dashboardData.totalIncome,
@@ -305,6 +398,8 @@ export function DashboardScreen() {
         extraCost: dashboardData.extraCost,
         pieChartBase64,
         incomeCostPieBase64,
+        trendIntervals: trendList,
+        recentTransactions: recentTxList,
       });
 
       await RNPrint.print({ html });
@@ -317,11 +412,12 @@ export function DashboardScreen() {
   };
 
   return (
-    <ScrollView
-      style={[styles.flex, { backgroundColor: theme.background }]}
-      contentContainerStyle={styles.container}
-      refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={theme.primary} />}
-    >
+    <View style={styles.flex}>
+      <ScrollView
+        style={[styles.flex, { backgroundColor: theme.background }]}
+        contentContainerStyle={styles.container}
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={theme.primary} />}
+      >
       {/* Header with Clean Controls */}
       <View style={styles.headerRow}>
         <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Financial Overview</Text>
@@ -466,91 +562,227 @@ export function DashboardScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Analytics Filter Selector (All / Incomes / Costs) */}
+      <View style={[styles.filterBar, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
+        {(["all", "incomes", "costs"] as const).map((filterKey) => (
+          <TouchableOpacity
+            key={filterKey}
+            style={[
+              styles.filterTab,
+              analyticsFilter === filterKey && { backgroundColor: theme.primary },
+            ]}
+            onPress={() => setAnalyticsFilter(filterKey)}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[
+                styles.filterTabText,
+                { color: analyticsFilter === filterKey ? "#ffffff" : theme.textSecondary },
+                analyticsFilter === filterKey && styles.filterTabActiveText,
+              ]}
+            >
+              {filterKey === "all" ? "All Overview" : filterKey === "incomes" ? "Incomes Only" : "Costs Only"}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       {isLoading ? (
-        <ActivityIndicator color={theme.primary} style={{ marginVertical: 30 }} />
+        <View style={{ gap: 12, marginVertical: 8 }}>
+          <DashboardCardsSkeleton />
+          <ChartCardSkeleton height={140} />
+          <ChartCardSkeleton height={160} />
+        </View>
       ) : (
         <>
           {/* Summary Cards Grid */}
           <View style={styles.cardsGrid}>
-            {/* Total Income */}
+            {/* Display based on active analyticsFilter */}
+            {(analyticsFilter === "all" || analyticsFilter === "incomes") && (
+              <Card style={styles.cardHalf}>
+                <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Total Income</Text>
+                <Text style={[styles.cardValue, { color: theme.primary }]}>
+                  {showBalances ? formatCurrency(dashboardData?.totalIncome || 0) : "ETB ••••••"}
+                </Text>
+              </Card>
+            )}
+
+            {(analyticsFilter === "all" || analyticsFilter === "costs") && (
+              <Card style={styles.cardHalf}>
+                <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Total Costs</Text>
+                <Text style={[styles.cardValue, { color: theme.textPrimary }]}>
+                  {showBalances ? formatCurrency(dashboardData?.totalCosts || 0) : "ETB ••••••"}
+                </Text>
+              </Card>
+            )}
+
+            {(analyticsFilter === "all" || analyticsFilter === "incomes") && (
+              <Card style={styles.cardHalf}>
+                <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Net Savings</Text>
+                <Text
+                  style={[
+                    styles.cardValue,
+                    { color: (dashboardData?.netProfitLoss || 0) >= 0 ? theme.primary : theme.danger },
+                  ]}
+                >
+                  {showBalances ? formatCurrency(dashboardData?.netProfitLoss || 0) : "ETB ••••••"}
+                </Text>
+              </Card>
+            )}
+
+            {(analyticsFilter === "all" || analyticsFilter === "costs") && (
+              <Card style={styles.cardHalf}>
+                <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Cost Budget</Text>
+                <Text style={[styles.cardValue, { color: theme.textPrimary }]}>
+                  {dashboardData?.costLimit !== null
+                    ? showBalances
+                      ? formatCurrency(dashboardData?.costLimit || 0)
+                      : "ETB ••••••"
+                    : "No Plan"}
+                </Text>
+                <Text style={[styles.badgeText, { color: theme.primary }]}>
+                  {dashboardData?.costVariance !== null
+                    ? showBalances
+                      ? (dashboardData?.costVariance || 0) >= 0
+                        ? `+${formatCurrency(dashboardData?.costVariance || 0)} left`
+                        : `${formatCurrency(dashboardData?.costVariance || 0)} over`
+                      : "• • • • • •"
+                    : "Unbudgeted"}
+                </Text>
+              </Card>
+            )}
+
+            {analyticsFilter === "costs" && (
+              <>
+                <Card style={styles.cardHalf}>
+                  <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Basic Expenses</Text>
+                  <Text style={[styles.cardValue, { color: theme.textPrimary }]}>
+                    {showBalances ? formatCurrency(dashboardData?.basicCost || 0) : "ETB ••••••"}
+                  </Text>
+                </Card>
+                <Card style={styles.cardHalf}>
+                  <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Fancy Expenses</Text>
+                  <Text style={[styles.cardValue, { color: "#f59e0b" }]}>
+                    {showBalances ? formatCurrency(dashboardData?.fancyCost || 0) : "ETB ••••••"}
+                  </Text>
+                </Card>
+              </>
+            )}
+          </View>
+
+          {/* Savings Progress Ring & Top Subcategories Section */}
+          <View style={styles.gridRow}>
+            {/* Savings Target Progress Ring */}
             <Card style={styles.cardHalf}>
-              <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Total Income</Text>
-              <Text style={[styles.cardValue, { color: theme.textPrimary }]}>
-                {showBalances ? formatCurrency(dashboardData?.totalIncome || 0) : "ETB ••••••"}
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary, textAlign: "center" }]}>
+                Savings Target
               </Text>
+              <ProgressRing
+                percentage={savingsProgressPct}
+                size={110}
+                sublabel={
+                  dashboardData?.savingsGoal
+                    ? `Goal: ${formatCurrency(dashboardData.savingsGoal)}`
+                    : "No Target Goal"
+                }
+              />
             </Card>
 
-            {/* Total Costs */}
+            {/* Top 3 Expense Subcategories */}
             <Card style={styles.cardHalf}>
-              <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Total Costs</Text>
-              <Text style={[styles.cardValue, { color: theme.textPrimary }]}>
-                {showBalances ? formatCurrency(dashboardData?.totalCosts || 0) : "ETB ••••••"}
-              </Text>
-            </Card>
-
-            {/* Net Savings */}
-            <Card style={styles.cardHalf}>
-              <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Net Savings</Text>
-              <Text
-                style={[
-                  styles.cardValue,
-                  { color: (dashboardData?.netProfitLoss || 0) >= 0 ? theme.primary : theme.danger },
-                ]}
-              >
-                {showBalances ? formatCurrency(dashboardData?.netProfitLoss || 0) : "ETB ••••••"}
-              </Text>
-            </Card>
-
-            {/* Budget Variance */}
-            <Card style={styles.cardHalf}>
-              <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Cost Budget</Text>
-              <Text style={[styles.cardValue, { color: theme.textPrimary }]}>
-                {dashboardData?.costLimit !== null
-                  ? showBalances
-                    ? formatCurrency(dashboardData?.costLimit || 0)
-                    : "ETB ••••••"
-                  : "No Plan"}
-              </Text>
-              <Text style={[styles.badgeText, { color: theme.primary }]}>
-                {dashboardData?.costVariance !== null
-                  ? showBalances
-                    ? (dashboardData?.costVariance || 0) >= 0
-                      ? `+${formatCurrency(dashboardData?.costVariance || 0)} left`
-                      : `${formatCurrency(dashboardData?.costVariance || 0)} over`
-                    : "• • • • • •"
-                  : "Unbudgeted"}
-              </Text>
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Top Expenses</Text>
+              {dashboardData?.topSubcategories && dashboardData.topSubcategories.length > 0 ? (
+                dashboardData.topSubcategories.map((item, idx) => (
+                  <View key={item.subcategory} style={styles.subCatItem}>
+                    <View style={styles.subCatLeft}>
+                      <Text style={[styles.subCatRank, { color: theme.primary }]}>#{idx + 1}</Text>
+                      <Text style={[styles.subCatName, { color: theme.textPrimary }]} numberOfLines={1}>
+                        {COST_SUBCATEGORY_LABELS[item.subcategory] || item.subcategory}
+                      </Text>
+                    </View>
+                    <Text style={[styles.subCatAmount, { color: theme.textSecondary }]}>
+                      {showBalances ? formatCurrency(item.amount) : "••••"}
+                    </Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={[styles.emptySubText, { color: theme.textMuted }]}>No costs logged</Text>
+              )}
             </Card>
           </View>
 
-          {/* Category Donut Chart */}
+          {/* Donut Chart Analytics */}
           <Card>
-            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Category Expense Proportions</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+              {analyticsFilter === "incomes"
+                ? "Income vs Net Ratio"
+                : analyticsFilter === "costs"
+                ? "Costs Category Breakdown"
+                : "Category Expense Proportions"}
+            </Text>
             <View style={{ backgroundColor: theme.card }}>
-              <SimplePieChart
-                data={[
-                  { label: "Basic", value: dashboardData?.basicCost || 0, color: theme.primary },
-                  { label: "Fancy", value: dashboardData?.fancyCost || 0, color: "#f59e0b" },
-                  { label: "Extra", value: dashboardData?.extraCost || 0, color: "#3b82f6" },
-                ]}
-                showBalances={showBalances}
-              />
+              {analyticsFilter === "incomes" ? (
+                <SimplePieChart
+                  data={[
+                    { label: "Income", value: dashboardData?.totalIncome || 0, color: theme.primary },
+                    { label: "Costs", value: dashboardData?.totalCosts || 0, color: "#f59e0b" },
+                    { label: "Net Savings", value: Math.max(dashboardData?.netProfitLoss || 0, 0), color: "#3b82f6" },
+                  ]}
+                  showBalances={showBalances}
+                />
+              ) : (
+                <SimplePieChart
+                  data={[
+                    { label: "Basic", value: dashboardData?.basicCost || 0, color: theme.primary },
+                    { label: "Fancy", value: dashboardData?.fancyCost || 0, color: "#f59e0b" },
+                    { label: "Extra", value: dashboardData?.extraCost || 0, color: "#3b82f6" },
+                  ]}
+                  showBalances={showBalances}
+                />
+              )}
             </View>
           </Card>
 
-          {/* Income vs Expense Overview */}
+          {/* Bar Chart Overview */}
           <Card>
-            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Income vs Expense Overview</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+              {analyticsFilter === "incomes"
+                ? "Income & Savings Trends"
+                : analyticsFilter === "costs"
+                ? "Expenses Breakdown"
+                : "Income vs Expense Overview"}
+            </Text>
             <View ref={barChartRef} collapsable={false} style={{ backgroundColor: theme.card }}>
-              <SimpleBarChart
-                data={[
-                  { label: "Income", valueA: dashboardData?.totalIncome || 0 },
-                  { label: "Costs", valueA: dashboardData?.totalCosts || 0 },
-                  { label: "Net", valueA: Math.max(dashboardData?.netProfitLoss || 0, 0) },
-                ]}
-                height={150}
-                colorA={theme.primary}
-              />
+              {analyticsFilter === "incomes" ? (
+                <SimpleBarChart
+                  data={[
+                    { label: "Total Income", valueA: dashboardData?.totalIncome || 0 },
+                    { label: "Net Profit", valueA: Math.max(dashboardData?.netProfitLoss || 0, 0) },
+                  ]}
+                  height={150}
+                  colorA={theme.primary}
+                />
+              ) : analyticsFilter === "costs" ? (
+                <SimpleBarChart
+                  data={[
+                    { label: "Basic", valueA: dashboardData?.basicCost || 0 },
+                    { label: "Fancy", valueA: dashboardData?.fancyCost || 0 },
+                    { label: "Extra", valueA: dashboardData?.extraCost || 0 },
+                  ]}
+                  height={150}
+                  colorA="#f59e0b"
+                />
+              ) : (
+                <SimpleBarChart
+                  data={[
+                    { label: "Income", valueA: dashboardData?.totalIncome || 0 },
+                    { label: "Costs", valueA: dashboardData?.totalCosts || 0 },
+                    { label: "Net", valueA: Math.max(dashboardData?.netProfitLoss || 0, 0) },
+                  ]}
+                  height={150}
+                  colorA={theme.primary}
+                />
+              )}
             </View>
           </Card>
 
@@ -787,7 +1019,8 @@ export function DashboardScreen() {
           </Card>
         </>
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -834,8 +1067,29 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     padding: 10,
     borderRadius: 12,
-    marginBottom: 16,
+    marginBottom: 12,
     borderWidth: 1,
+  },
+  filterBar: {
+    flexDirection: "row",
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 3,
+    marginBottom: 16,
+  },
+  filterTab: {
+    flex: 1,
+    paddingVertical: 7,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 9,
+  },
+  filterTabText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  filterTabActiveText: {
+    fontWeight: "800",
   },
   navBtn: { padding: 6, borderRadius: 8 },
   dateNavText: { fontSize: 14, fontWeight: "700" },
@@ -860,4 +1114,57 @@ const styles = StyleSheet.create({
   deltaLabel: { fontSize: 12, fontWeight: "600" },
   deltaValue: { fontSize: 14, fontWeight: "800" },
   chartTitle: { fontSize: 12, fontWeight: "700", marginTop: 10, marginBottom: 6 },
+  gridRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  subCatItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(150, 150, 150, 0.1)",
+  },
+  subCatLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flex: 1,
+  },
+  subCatRank: {
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  subCatName: {
+    fontSize: 12,
+    fontWeight: "600",
+    flex: 1,
+  },
+  subCatAmount: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  emptySubText: {
+    fontSize: 11,
+    textAlign: "center",
+    marginVertical: 12,
+  },
+  fabBtn: {
+    position: "absolute",
+    bottom: 90,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+    zIndex: 100,
+  },
 });

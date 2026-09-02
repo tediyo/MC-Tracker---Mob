@@ -4,13 +4,15 @@ import { ChevronRight } from "lucide-react-native";
 import { INCOME_SOURCE_TYPES, INCOME_SOURCE_TYPE_LABELS, type IncomeSourceType } from "../shared-types";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { useCalendar } from "../context/CalendarContext";
 import { useAppAlert } from "../context/AlertContext";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { SelectPicker } from "../components/ui/SelectPicker";
 import { EthiopianDatePicker } from "../components/ui/EthiopianDatePicker";
-import { formatCurrency, formatEthiopianDate } from "../lib/utils";
+import { ListFeedSkeleton } from "../components/ui/Skeleton";
+import { formatCurrency, formatDateByMode } from "../lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
 
@@ -24,6 +26,7 @@ export function IncomeScreen({ onViewHistory }: IncomeScreenProps) {
   const { user } = useAuth();
   const userId = user?.id || "";
   const { theme } = useTheme();
+  const { calendarMode } = useCalendar();
   const { showAlert } = useAppAlert();
   const queryClient = useQueryClient();
 
@@ -142,7 +145,7 @@ export function IncomeScreen({ onViewHistory }: IncomeScreenProps) {
       </View>
 
       {isLoading ? (
-        <ActivityIndicator color={theme.primary} style={{ marginVertical: 20 }} />
+        <ListFeedSkeleton count={3} />
       ) : recentIncomes.length === 0 ? (
         <Text style={[styles.emptyText, { color: theme.textMuted }]}>No income entries logged yet.</Text>
       ) : (
@@ -150,7 +153,7 @@ export function IncomeScreen({ onViewHistory }: IncomeScreenProps) {
           <Card key={item.id} style={styles.historyCard}>
             <View style={styles.historyRow}>
               <View style={styles.historyLeft}>
-                <Text style={[styles.historyDate, { color: theme.textMuted }]}>{formatEthiopianDate(item.date)}</Text>
+                <Text style={[styles.historyDate, { color: theme.textMuted }]}>{formatDateByMode(item.date, calendarMode)}</Text>
                 <View style={[styles.sourceBadge, { backgroundColor: theme.primaryLight }]}>
                   <Text style={[styles.sourceBadgeText, { color: theme.primary }]}>
                     {INCOME_SOURCE_TYPE_LABELS[item.source_type as IncomeSourceType]}

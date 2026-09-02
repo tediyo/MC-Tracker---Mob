@@ -15,6 +15,8 @@ export const CATEGORY_SUBCATEGORY_MAP: Record<CostCategory, readonly CostSubcate
   extra: ["cks", "cloth", "shoe", "holiday", "other"],
 };
 
+export const COST_SUBCATEGORIES_BY_CATEGORY = CATEGORY_SUBCATEGORY_MAP;
+
 export function isValidSubcategoryForCategory(
   category: CostCategory,
   subcategory: CostSubcategory,

@@ -15,24 +15,49 @@ import {
 } from "../shared-types";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { useCalendar } from "../context/CalendarContext";
 import { useAppAlert } from "../context/AlertContext";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { AppModal } from "../components/ui/Modal";
+import { ListFeedSkeleton } from "../components/ui/Skeleton";
 import { formatCurrency } from "../lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
+
+const GREGORIAN_MONTH_LIST = [
+  { number: 1, label: "January" },
+  { number: 2, label: "February" },
+  { number: 3, label: "March" },
+  { number: 4, label: "April" },
+  { number: 5, label: "May" },
+  { number: 6, label: "June" },
+  { number: 7, label: "July" },
+  { number: 8, label: "August" },
+  { number: 9, label: "September" },
+  { number: 10, label: "October" },
+  { number: 11, label: "November" },
+  { number: 12, label: "December" },
+];
 
 export function PlansScreen() {
   const { user } = useAuth();
   const userId = user?.id || "";
   const { theme } = useTheme();
+  const { calendarMode } = useCalendar();
   const { showAlert } = useAppAlert();
   const queryClient = useQueryClient();
 
+  const isGregorian = calendarMode === "gregorian";
+
   const currentEth = getEthiopianDate(new Date());
-  const [selectedYear, setSelectedYear] = useState<number>(currentEth.year);
+  const currentGregYear = new Date().getFullYear();
+  const currentGregMonth = new Date().getMonth() + 1;
+
+  const [selectedYear, setSelectedYear] = useState<number>(
+    isGregorian ? currentGregYear : currentEth.year
+  );
 
   // Modal State
   const [activeMonth, setActiveMonth] = useState<number | null>(null);
@@ -125,8 +150,12 @@ export function PlansScreen() {
         </TouchableOpacity>
 
         <View style={styles.yearTitleBox}>
-          <Text style={[styles.yearTitle, { color: theme.textPrimary }]}>{selectedYear} E.C. / ዓ.ም.</Text>
-          <Text style={[styles.yearSubTitle, { color: theme.primary }]}>{plans.length} of 13 months planned</Text>
+          <Text style={[styles.yearTitle, { color: theme.textPrimary }]}>
+            {isGregorian ? `${selectedYear} G.C.` : `${selectedYear} E.C. / ዓ.ም.`}
+          </Text>
+          <Text style={[styles.yearSubTitle, { color: theme.primary }]}>
+            {plans.length} of {isGregorian ? 12 : 13} months planned
+          </Text>
         </View>
 
         <TouchableOpacity
@@ -138,14 +167,15 @@ export function PlansScreen() {
       </View>
 
       {isLoading ? (
-        <ActivityIndicator color={theme.primary} style={{ marginVertical: 30 }} />
+        <ListFeedSkeleton count={4} />
       ) : (
-        /* 13 Ethiopian Month Cards */
+        /* Month Cards */
         <View style={styles.gridContainer}>
-          {ETHIOPIAN_MONTHS.map((monthInfo) => {
+          {(isGregorian ? GREGORIAN_MONTH_LIST : ETHIOPIAN_MONTHS).map((monthInfo) => {
             const plan = planByMonth.get(monthInfo.number);
-            const isCurrent =
-              currentEth.year === selectedYear && currentEth.month === monthInfo.number;
+            const isCurrent = isGregorian
+              ? currentGregYear === selectedYear && currentGregMonth === monthInfo.number
+              : currentEth.year === selectedYear && currentEth.month === monthInfo.number;
 
             return (
               <Card
