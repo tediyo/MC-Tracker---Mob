@@ -10,7 +10,7 @@ import type { CostSubcategory } from "../enums/cost-subcategory.enum";
  * enum values are append-only) too.
  */
 export const CATEGORY_SUBCATEGORY_MAP: Record<CostCategory, readonly CostSubcategory[]> = {
-  basic: ["food", "asbeza", "taxi", "rent", "wifi", "other"],
+  basic: ["food", "house_hold", "taxi", "rent", "wifi", "other"],
   fancy: ["drunk", "coffee", "familia", "other"],
   extra: ["cks", "cloth", "shoe", "holiday", "other"],
 };

@@ -2,10 +2,10 @@ import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Linking, Platform } from "react-native";
 import {
   UserCheck,
-  Palette,
+  Moon,
   Pencil,
   ChevronRight,
-  Shield,
+  KeyRound,
   Calendar,
   Globe,
   HelpCircle,
@@ -15,7 +15,7 @@ import {
   TrendingUp,
   Receipt,
   Target,
-  Sparkles,
+  Radio,
 } from "lucide-react-native";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
@@ -134,20 +134,40 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
     }
   }, [user?.id]);
 
+  // Inline validation errors for modals
+  const [editNameError, setEditNameError] = useState("");
+  const [editEmailError, setEditEmailError] = useState("");
+  const [currentPasswordError, setCurrentPasswordError] = useState("");
+  const [newPasswordError, setNewPasswordError] = useState("");
+  const [confirmPasswordError, setConfirmPasswordError] = useState("");
+
   const openEditProfile = () => {
     setNewName(profileName);
     setNewEmail(user?.email || "");
+    setEditNameError("");
+    setEditEmailError("");
     setIsEditingProfile(true);
   };
 
   const handleSaveProfile = async () => {
+    setEditNameError("");
+    setEditEmailError("");
+
     const trimmedName = newName.trim();
     const trimmedEmail = newEmail.trim();
+    let hasError = false;
+
+    if (!trimmedName) {
+      setEditNameError("Full name cannot be empty");
+      hasError = true;
+    }
 
     if (!trimmedEmail) {
-      showAlert("Error", "Email address cannot be empty.");
-      return;
+      setEditEmailError("Email address cannot be empty");
+      hasError = true;
     }
+
+    if (hasError) return;
 
     setIsSavingProfile(true);
     try {
@@ -189,17 +209,40 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
     setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
+    setCurrentPasswordError("");
+    setNewPasswordError("");
+    setConfirmPasswordError("");
   };
 
   const handleChangePassword = async () => {
-    if (!newPassword || newPassword !== confirmPassword) {
-      showAlert("Error", "New passwords don't match.");
-      return;
+    setCurrentPasswordError("");
+    setNewPasswordError("");
+    setConfirmPasswordError("");
+
+    let hasError = false;
+
+    if (!currentPassword) {
+      setCurrentPasswordError("Please enter your current password");
+      hasError = true;
     }
-    if (newPassword.length < 6) {
-      showAlert("Error", "New password must be at least 6 characters.");
-      return;
+
+    if (!newPassword) {
+      setNewPasswordError("Please enter a new password");
+      hasError = true;
+    } else if (newPassword.length < 6) {
+      setNewPasswordError("Password must be at least 6 characters");
+      hasError = true;
     }
+
+    if (!confirmPassword) {
+      setConfirmPasswordError("Please confirm your new password");
+      hasError = true;
+    } else if (newPassword !== confirmPassword) {
+      setConfirmPasswordError("Passwords do not match");
+      hasError = true;
+    }
+
+    if (hasError) return;
     if (!user?.email) return;
 
     setIsSavingPassword(true);
@@ -208,7 +251,10 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
         email: user.email,
         password: currentPassword,
       });
-      if (reauthError) throw new Error("Current password is incorrect.");
+      if (reauthError) {
+        setCurrentPasswordError("Current password is incorrect");
+        return;
+      }
 
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
@@ -313,7 +359,7 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
 
         {/* Dark Theme Toggle */}
         <SettingRow
-          icon={Palette}
+          icon={Moon}
           title="Dark Theme"
           subtitle={themeMode === "dark" ? "On (Dark Mode active)" : "Off (Light Mode active)"}
           hasSwitch={true}
@@ -324,7 +370,7 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
 
         {/* Live Floating Icon Toggle */}
         <SettingRow
-          icon={Sparkles}
+          icon={Radio}
           title="Live Floating Icon"
           subtitle={
             isLiveMode
@@ -339,7 +385,7 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
 
         {/* Change Password */}
         <SettingRow
-          icon={Shield}
+          icon={KeyRound}
           title="Change Password"
           onPress={() => setIsChangingPassword(true)}
           showDivider={false}
@@ -425,14 +471,22 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
         <Input
           label="Full Name"
           value={newName}
-          onChangeText={setNewName}
+          onChangeText={(t) => {
+            setNewName(t);
+            if (editNameError) setEditNameError("");
+          }}
+          error={editNameError}
           placeholder="John Doe"
           autoCapitalize="words"
         />
         <Input
           label="Email Address"
           value={newEmail}
-          onChangeText={setNewEmail}
+          onChangeText={(t) => {
+            setNewEmail(t);
+            if (editEmailError) setEditEmailError("");
+          }}
+          error={editEmailError}
           autoCapitalize="none"
           keyboardType="email-address"
         />
@@ -450,14 +504,31 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
         <Input
           label="Current Password"
           value={currentPassword}
-          onChangeText={setCurrentPassword}
+          onChangeText={(t) => {
+            setCurrentPassword(t);
+            if (currentPasswordError) setCurrentPasswordError("");
+          }}
+          error={currentPasswordError}
           isPassword
         />
-        <Input label="New Password" value={newPassword} onChangeText={setNewPassword} isPassword />
+        <Input
+          label="New Password"
+          value={newPassword}
+          onChangeText={(t) => {
+            setNewPassword(t);
+            if (newPasswordError) setNewPasswordError("");
+          }}
+          error={newPasswordError}
+          isPassword
+        />
         <Input
           label="Confirm New Password"
           value={confirmPassword}
-          onChangeText={setConfirmPassword}
+          onChangeText={(t) => {
+            setConfirmPassword(t);
+            if (confirmPasswordError) setConfirmPasswordError("");
+          }}
+          error={confirmPasswordError}
           isPassword
         />
       </AppModal>

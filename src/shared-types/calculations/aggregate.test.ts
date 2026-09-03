@@ -65,7 +65,7 @@ describe("groupCostsBySubcategory", () => {
     ];
     expect(groupCostsBySubcategory(costs, RANGE, "basic")).toEqual({
       food: 20,
-      asbeza: 0,
+      house_hold: 0,
       taxi: 15,
       rent: 0,
       wifi: 0,

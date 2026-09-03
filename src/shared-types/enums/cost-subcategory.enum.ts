@@ -8,7 +8,7 @@
  */
 export const COST_SUBCATEGORIES = [
   "food",
-  "asbeza",
+  "house_hold",
   "taxi",
   "rent",
   "wifi",
@@ -26,7 +26,7 @@ export type CostSubcategory = (typeof COST_SUBCATEGORIES)[number];
 
 export const COST_SUBCATEGORY_LABELS: Record<CostSubcategory, string> = {
   food: "Food",
-  asbeza: "House hold cost",
+  house_hold: "House hold",
   taxi: "Taxi",
   rent: "Rent",
   wifi: "Wifi",
