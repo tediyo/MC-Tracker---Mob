@@ -22,7 +22,7 @@ import {
 } from "../../shared-types";
 import { supabase } from "../../lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
-import { checkBudgetThresholds } from "../../services/notificationService";
+import { checkBudgetThresholds, updateDailyCostReminders } from "../../services/notificationService";
 
 interface QuickAddModalProps {
   visible: boolean;
@@ -53,8 +53,14 @@ export function QuickAddModal({ visible, onClose }: QuickAddModalProps) {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Validation Error States
+  const [costAmountError, setCostAmountError] = useState("");
+  const [costDescError, setCostDescError] = useState("");
+  const [incomeAmountError, setIncomeAmountError] = useState("");
+
   const handleCategoryChange = (cat: CostCategory) => {
     setCostCategory(cat);
+    setCostDescError("");
     const validSubs = CATEGORY_SUBCATEGORY_MAP[cat] || [];
     if (validSubs.length > 0) {
       setCostSubcategory(validSubs[0]!);
@@ -65,11 +71,23 @@ export function QuickAddModal({ visible, onClose }: QuickAddModalProps) {
     if (!userId) return;
 
     if (type === "cost") {
+      setCostAmountError("");
+      setCostDescError("");
+
       const numAmount = parseFloat(costAmount);
+      let hasError = false;
+
       if (isNaN(numAmount) || numAmount <= 0) {
-        showAlert("Invalid Amount", "Please enter a valid cost amount.");
-        return;
+        setCostAmountError("Please enter a valid cost amount");
+        hasError = true;
       }
+
+      if (costSubcategory === "other" && !costDescription.trim()) {
+        setCostDescError("Reason is required when selecting 'Other'");
+        hasError = true;
+      }
+
+      if (hasError) return;
 
       setIsSubmitting(true);
       try {
@@ -84,13 +102,17 @@ export function QuickAddModal({ visible, onClose }: QuickAddModalProps) {
 
         if (error) throw error;
 
-        // Invalidate queries & check budget warnings
+        // Invalidate queries & check budget warnings & suppress daily reminders
         queryClient.invalidateQueries({ queryKey: ["mobile-dashboard"] });
         queryClient.invalidateQueries({ queryKey: ["mobile-costs"] });
+
+        updateDailyCostReminders(true);
 
         // Reset & Close
         setCostAmount("");
         setCostDescription("");
+        setCostAmountError("");
+        setCostDescError("");
         onClose();
         showAlert("Success", "Expense entry added!");
       } catch (err: any) {
@@ -99,9 +121,11 @@ export function QuickAddModal({ visible, onClose }: QuickAddModalProps) {
         setIsSubmitting(false);
       }
     } else {
+      setIncomeAmountError("");
+
       const numAmount = parseFloat(incomeAmount);
       if (isNaN(numAmount) || numAmount <= 0) {
-        showAlert("Invalid Amount", "Please enter a valid income amount.");
+        setIncomeAmountError("Please enter a valid income amount");
         return;
       }
 
@@ -122,6 +146,7 @@ export function QuickAddModal({ visible, onClose }: QuickAddModalProps) {
 
         setIncomeAmount("");
         setIncomeDescription("");
+        setIncomeAmountError("");
         onClose();
         showAlert("Success", "Income entry added!");
       } catch (err: any) {
@@ -196,16 +221,24 @@ export function QuickAddModal({ visible, onClose }: QuickAddModalProps) {
           <Input
             label="Amount (ETB)"
             value={costAmount}
-            onChangeText={setCostAmount}
+            onChangeText={(t) => {
+              setCostAmount(t);
+              if (costAmountError) setCostAmountError("");
+            }}
+            error={costAmountError}
             keyboardType="numeric"
             placeholder="0.00"
           />
           <EthiopianDatePicker label="Date" value={costDate} onChange={setCostDate} required />
           <Input
-            label="Description (Optional)"
+            label={costSubcategory === "other" ? "Description / Reason" : "Description (Optional)"}
             value={costDescription}
-            onChangeText={setCostDescription}
-            placeholder="Notes or tags"
+            onChangeText={(t) => {
+              setCostDescription(t);
+              if (costDescError) setCostDescError("");
+            }}
+            error={costDescError}
+            placeholder={costSubcategory === "other" ? "Specify reason for Other" : "Notes or tags"}
           />
         </View>
       ) : (
@@ -219,7 +252,11 @@ export function QuickAddModal({ visible, onClose }: QuickAddModalProps) {
           <Input
             label="Amount (ETB)"
             value={incomeAmount}
-            onChangeText={setIncomeAmount}
+            onChangeText={(t) => {
+              setIncomeAmount(t);
+              if (incomeAmountError) setIncomeAmountError("");
+            }}
+            error={incomeAmountError}
             keyboardType="numeric"
             placeholder="0.00"
           />

@@ -63,6 +63,8 @@ export function PlansScreen() {
   const [activeMonth, setActiveMonth] = useState<number | null>(null);
   const [costLimitInput, setCostLimitInput] = useState("");
   const [savingsGoalInput, setSavingsGoalInput] = useState("");
+  const [costLimitError, setCostLimitError] = useState("");
+  const [savingsGoalError, setSavingsGoalError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch Plans
@@ -83,21 +85,34 @@ export function PlansScreen() {
   const planByMonth = new Map(plans.map((p) => [p.month, p]));
 
   const openPlanModal = (monthNum: number) => {
-    const existing = planByMonth.get(monthNum);
     setActiveMonth(monthNum);
+    const existing = planByMonth.get(monthNum);
     setCostLimitInput(existing ? String(existing.target_cost_limit) : "");
     setSavingsGoalInput(existing ? String(existing.target_savings_goal) : "");
+    setCostLimitError("");
+    setSavingsGoalError("");
   };
 
   const handleSavePlan = async () => {
     if (activeMonth === null) return;
+    setCostLimitError("");
+    setSavingsGoalError("");
+
     const limit = parseFloat(costLimitInput);
     const goal = parseFloat(savingsGoalInput);
+    let hasError = false;
 
-    if (isNaN(limit) || limit < 0 || isNaN(goal) || goal < 0) {
-      showAlert("Invalid Inputs", "Please enter valid non-negative numbers for limits and goals.");
-      return;
+    if (isNaN(limit) || limit < 0) {
+      setCostLimitError("Please enter a valid non-negative cost limit");
+      hasError = true;
     }
+
+    if (isNaN(goal) || goal < 0) {
+      setSavingsGoalError("Please enter a valid non-negative savings goal");
+      hasError = true;
+    }
+
+    if (hasError) return;
 
     setIsSubmitting(true);
     try {
@@ -242,18 +257,26 @@ export function PlansScreen() {
         confirmLoading={isSubmitting}
       >
         <Input
-          label="Target Cost Limit (USD)"
+          label="Target Cost Limit (ETB)"
           placeholder="e.g. 500.00"
           value={costLimitInput}
-          onChangeText={setCostLimitInput}
+          onChangeText={(t) => {
+            setCostLimitInput(t);
+            if (costLimitError) setCostLimitError("");
+          }}
+          error={costLimitError}
           keyboardType="numeric"
         />
 
         <Input
-          label="Target Savings Goal (USD)"
+          label="Target Savings Goal (ETB)"
           placeholder="e.g. 200.00"
           value={savingsGoalInput}
-          onChangeText={setSavingsGoalInput}
+          onChangeText={(t) => {
+            setSavingsGoalInput(t);
+            if (savingsGoalError) setSavingsGoalError("");
+          }}
+          error={savingsGoalError}
           keyboardType="numeric"
         />
       </AppModal>

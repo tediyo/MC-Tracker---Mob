@@ -49,7 +49,7 @@ import { QuickAddModal } from "../components/ui/QuickAddModal";
 import { DashboardCardsSkeleton, ChartCardSkeleton } from "../components/ui/Skeleton";
 import { formatCurrency } from "../lib/utils";
 import { buildOverviewReportHtml } from "../lib/reportGenerator";
-import { checkBudgetThresholds } from "../services/notificationService";
+import { checkBudgetThresholds, checkMonthlyPlanSurpassed } from "../services/notificationService";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
 import { getComparisonData, type ComparisonMode } from "../../src/lib/comparisonHelper";
@@ -74,7 +74,10 @@ function weekBucketForDay(day: number): number {
 }
 
 function formatIso(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 export function DashboardScreen() {
@@ -164,38 +167,41 @@ export function DashboardScreen() {
       const startIso = formatIso(rangeStart);
       const endIso = formatIso(rangeEnd);
 
-      const { data: incomes } = await supabase
-        .from("incomes")
-        .select("*")
-        .eq("user_id", userId)
-        .gte("date", startIso)
-        .lte("date", endIso);
-      const { data: costs } = await supabase
-        .from("costs")
-        .select("*")
-        .eq("user_id", userId)
-        .gte("date", startIso)
-        .lte("date", endIso);
-      const { data: plans } = await supabase
-        .from("plans")
-        .select("*")
-        .eq("user_id", userId);
+      const [{ data: incomes, error: incError }, { data: costs, error: costError }, { data: plans, error: planError }] =
+        await Promise.all([
+          supabase
+            .from("incomes")
+            .select("*")
+            .eq("user_id", userId)
+            .gte("date", startIso)
+            .lte("date", endIso),
+          supabase
+            .from("costs")
+            .select("*")
+            .eq("user_id", userId)
+            .gte("date", startIso)
+            .lte("date", endIso),
+          supabase
+            .from("plans")
+            .select("*")
+            .eq("user_id", userId),
+        ]);
+
+      if (incError) console.error("[Dashboard] Incomes error:", incError);
+      if (costError) console.error("[Dashboard] Costs error:", costError);
+      if (planError) console.error("[Dashboard] Plans error:", planError);
 
       const totalInc = (incomes || []).reduce((acc, r) => acc + Number(r.amount), 0);
       const totalCost = (costs || []).reduce((acc, r) => acc + Number(r.amount), 0);
 
-      // Budget targets only resolve for an exact monthly match - daily/weekly/yearly would
-      // need pro-rating or summing multiple plans (the web dashboard's shared-types
-      // calculatePeriodMetrics does this) which isn't wired up here. Falling back to
-      // "No Plan"/"Unbudgeted" for those is honest; showing the monthly plan's numbers
-      // against a differently-sized period would be misleading.
+      // Budget targets resolve for monthly match - convert to Number to guard against type mismatches
       const activePlan =
         timeframe === "monthly"
-          ? (plans || []).find((p) => p.year === refYear && p.month === refMonth)
+          ? (plans || []).find((p) => Number(p.year) === Number(refYear) && Number(p.month) === Number(refMonth))
           : undefined;
 
-      const costLimit = activePlan ? Number(activePlan.target_cost_limit) : null;
-      const savingsGoal = activePlan ? Number(activePlan.target_savings_goal) : null;
+      const costLimit = activePlan && activePlan.target_cost_limit != null ? Number(activePlan.target_cost_limit) : null;
+      const savingsGoal = activePlan && activePlan.target_savings_goal != null ? Number(activePlan.target_savings_goal) : null;
 
       const basicCost = (costs || [])
         .filter((c) => c.category === "basic")
@@ -221,6 +227,7 @@ export function DashboardScreen() {
 
       if (costLimit && costLimit > 0) {
         checkBudgetThresholds(totalCost, costLimit);
+        checkMonthlyPlanSurpassed(totalCost, costLimit);
       }
 
       return {
@@ -634,14 +641,14 @@ export function DashboardScreen() {
               <Card style={styles.cardHalf}>
                 <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Cost Budget</Text>
                 <Text style={[styles.cardValue, { color: theme.textPrimary }]}>
-                  {dashboardData?.costLimit !== null
+                  {dashboardData?.costLimit != null
                     ? showBalances
-                      ? formatCurrency(dashboardData?.costLimit || 0)
+                      ? formatCurrency(dashboardData.costLimit)
                       : "ETB ••••••"
                     : "No Plan"}
                 </Text>
                 <Text style={[styles.badgeText, { color: theme.primary }]}>
-                  {dashboardData?.costVariance !== null
+                  {dashboardData?.costVariance != null
                     ? showBalances
                       ? (dashboardData?.costVariance || 0) >= 0
                         ? `+${formatCurrency(dashboardData?.costVariance || 0)} left`

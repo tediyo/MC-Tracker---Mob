@@ -140,10 +140,7 @@ export function MainNavigator() {
           style={[
             styles.profileCircleBtn,
             { backgroundColor: theme.primary },
-            activeTab === "profile" && [
-              styles.profileCircleBtnActive,
-              { borderColor: isDark ? "#ffffff" : "#09090b" },
-            ],
+            activeTab === "profile" && styles.profileCircleBtnActive,
           ]}
           onPress={() => setActiveTab("profile")}
           activeOpacity={0.8}
@@ -223,7 +220,6 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   profileCircleBtnActive: {
-    borderWidth: 3,
     transform: [{ scale: 1.05 }],
   },
 });

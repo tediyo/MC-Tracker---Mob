@@ -15,18 +15,34 @@ export function AuthScreen() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [nameError, setNameError] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleAuth = async () => {
+    setNameError("");
+    setEmailError("");
+    setPasswordError("");
+
+    let hasError = false;
+
     if (isSignUp && !name.trim()) {
-      showAlert("Error", "Please enter your name");
-      return;
+      setNameError("Please enter your name");
+      hasError = true;
     }
 
-    if (!email.trim() || !password.trim()) {
-      showAlert("Error", "Please enter both email and password");
-      return;
+    if (!email.trim()) {
+      setEmailError("Please enter your email address");
+      hasError = true;
     }
+
+    if (!password.trim()) {
+      setPasswordError("Please enter your password");
+      hasError = true;
+    }
+
+    if (hasError) return;
 
     setLoading(true);
     try {
@@ -82,7 +98,11 @@ export function AuthScreen() {
               label="Full Name"
               placeholder="John Doe"
               value={name}
-              onChangeText={setName}
+              onChangeText={(t) => {
+                setName(t);
+                if (nameError) setNameError("");
+              }}
+              error={nameError}
               autoCapitalize="words"
             />
           )}
@@ -91,7 +111,11 @@ export function AuthScreen() {
             label="Email Address"
             placeholder="name@example.com"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(t) => {
+              setEmail(t);
+              if (emailError) setEmailError("");
+            }}
+            error={emailError}
             keyboardType="email-address"
             autoCapitalize="none"
           />
@@ -100,7 +124,11 @@ export function AuthScreen() {
             label="Password"
             placeholder="••••••••"
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(t) => {
+              setPassword(t);
+              if (passwordError) setPasswordError("");
+            }}
+            error={passwordError}
             isPassword
           />
 

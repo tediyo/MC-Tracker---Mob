@@ -75,19 +75,29 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
   });
   const recentCosts = costs.slice(0, RECENT_COUNT);
 
+  const [amountError, setAmountError] = useState("");
+  const [descriptionError, setDescriptionError] = useState("");
+
   // Add Cost Handler with Mandatory Reason Validation
   const handleAddCost = async () => {
+    setAmountError("");
+    setDescriptionError("");
+
     const numAmount = parseFloat(amount);
+    let hasError = false;
+
     if (isNaN(numAmount) || numAmount <= 0) {
-      showAlert("Invalid Amount", "Please enter a valid cost amount");
-      return;
+      setAmountError("Please enter a valid cost amount");
+      hasError = true;
     }
 
     // MANDATORY REASON VALIDATION FOR OTHER
     if (subcategory === "other" && !description.trim()) {
-      showAlert("Reason Required", "Please specify a reason when selecting 'Other' subcategory.");
-      return;
+      setDescriptionError("Please specify a reason when selecting 'Other'");
+      hasError = true;
     }
+
+    if (hasError) return;
 
     setIsSubmitting(true);
     try {
@@ -105,6 +115,8 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
       showAlert("Success", "Expense entry logged successfully!");
       setAmount("");
       setDescription("");
+      setAmountError("");
+      setDescriptionError("");
       queryClient.invalidateQueries({ queryKey: ["mobile-costs"] });
       queryClient.invalidateQueries({ queryKey: ["mobile-dashboard"] });
     } catch (err: any) {
@@ -138,10 +150,14 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
         <Text style={[styles.formTitle, { color: theme.textPrimary }]}>Log Expense</Text>
 
         <Input
-          label="Amount (USD)"
+          label="Amount (ETB)"
           placeholder="0.00"
           value={amount}
-          onChangeText={setAmount}
+          onChangeText={(t) => {
+            setAmount(t);
+            if (amountError) setAmountError("");
+          }}
+          error={amountError}
           keyboardType="numeric"
           required
         />
@@ -159,7 +175,10 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
           label="Subcategory"
           options={subcategoryOptions}
           selectedValue={subcategory}
-          onValueChange={setSubcategory}
+          onValueChange={(val) => {
+            setSubcategory(val);
+            if (descriptionError) setDescriptionError("");
+          }}
         />
 
         {/* Dynamic Reason / Description Label */}
@@ -167,9 +186,12 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
           label={isOther ? "Reason (Required) *" : "Description / Notes"}
           placeholder={isOther ? "State the reason for this expense..." : "Add details..."}
           value={description}
-          onChangeText={setDescription}
+          onChangeText={(t) => {
+            setDescription(t);
+            if (descriptionError) setDescriptionError("");
+          }}
           required={isOther}
-          error={isOther && !description.trim() ? "Reason is required when selecting Other" : undefined}
+          error={descriptionError || undefined}
         />
 
         <Button

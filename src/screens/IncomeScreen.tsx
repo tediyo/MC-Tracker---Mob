@@ -53,12 +53,15 @@ export function IncomeScreen({ onViewHistory }: IncomeScreenProps) {
     enabled: !!userId,
   });
   const recentIncomes = incomes.slice(0, RECENT_COUNT);
+  const [amountError, setAmountError] = useState("");
 
   // Add Income Mutation
   const handleAddIncome = async () => {
+    setAmountError("");
+
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) {
-      showAlert("Invalid Amount", "Please enter a valid income amount");
+      setAmountError("Please enter a valid income amount");
       return;
     }
 
@@ -77,6 +80,7 @@ export function IncomeScreen({ onViewHistory }: IncomeScreenProps) {
       showAlert("Success", "Income entry logged successfully!");
       setAmount("");
       setDescription("");
+      setAmountError("");
       queryClient.invalidateQueries({ queryKey: ["mobile-incomes"] });
       queryClient.invalidateQueries({ queryKey: ["mobile-dashboard"] });
     } catch (err: any) {
@@ -103,10 +107,14 @@ export function IncomeScreen({ onViewHistory }: IncomeScreenProps) {
         <Text style={[styles.formTitle, { color: theme.textPrimary }]}>Log Income</Text>
 
         <Input
-          label="Amount (USD)"
+          label="Amount (ETB)"
           placeholder="0.00"
           value={amount}
-          onChangeText={setAmount}
+          onChangeText={(t) => {
+            setAmount(t);
+            if (amountError) setAmountError("");
+          }}
+          error={amountError}
           keyboardType="numeric"
           required
         />

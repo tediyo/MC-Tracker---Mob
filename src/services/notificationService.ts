@@ -1,8 +1,17 @@
 import notifee, { AndroidImportance, TriggerType, RepeatFrequency } from "@notifee/react-native";
 import messaging from "@react-native-firebase/messaging";
 import { PermissionsAndroid, Platform } from "react-native";
+import { supabase } from "../lib/supabase";
 
 export const NOTIFICATION_CHANNEL_ID = "mc_tracker_notifications";
+
+/** Notification Trigger IDs */
+const ID_REMINDER_10PM = "reminder_1000pm";
+const ID_REMINDER_11PM = "reminder_1100pm";
+const ID_REMINDER_1130PM = "reminder_1130pm";
+const ID_REMINDER_1159PM = "reminder_1159pm";
+const ID_YESTERDAY_2H = "reminder_yesterday_2h";
+const ID_NEW_MONTH = "new_month_welcome";
 
 /**
  * Requests Notification permissions for Android 13+ (POST_NOTIFICATIONS) and iOS.
@@ -67,26 +76,158 @@ export async function displayNotification(title: string, body: string, data?: Re
 }
 
 /**
- * Schedules a daily 8:00 PM local push notification reminder on device.
+ * Schedule Escalating Daily Reminders:
+ * - 10:00 PM: First daily reminder
+ * - 11:00 PM: Second reminder (if not logged yet)
+ * - 11:30 PM: Third reminder (if not logged yet)
+ * - 11:59 PM: Final reminder today (if not logged yet)
+ * - Every 2 Hours next day: "Please log yesterday's costs..."
+ *
+ * If `hasLoggedToday` is true, cancels pending reminders for today!
  */
-export async function scheduleDaily8PMReminder() {
+export async function updateDailyCostReminders(hasLoggedToday: boolean) {
+  try {
+    await createNotificationChannel();
+
+    if (hasLoggedToday) {
+      // User has logged costs today! Cancel pending reminders for today.
+      await notifee.cancelNotification(ID_REMINDER_10PM);
+      await notifee.cancelNotification(ID_REMINDER_11PM);
+      await notifee.cancelNotification(ID_REMINDER_1130PM);
+      await notifee.cancelNotification(ID_REMINDER_1159PM);
+      await notifee.cancelNotification(ID_YESTERDAY_2H);
+      console.log("[Notification] Costs logged today! Suppressing pending daily reminders.");
+
+      // Schedule tomorrow's 10:00 PM reminder
+      const tomorrow10PM = new Date();
+      tomorrow10PM.setDate(tomorrow10PM.getDate() + 1);
+      tomorrow10PM.setHours(22, 0, 0, 0);
+
+      await notifee.createTriggerNotification(
+        {
+          id: ID_REMINDER_10PM,
+          title: "Daily Expense Reminder",
+          body: "Did you log your expenses today? Tap to record now!",
+          android: {
+            channelId: NOTIFICATION_CHANNEL_ID,
+            importance: AndroidImportance.HIGH,
+            pressAction: { id: "default" },
+          },
+        },
+        {
+          type: TriggerType.TIMESTAMP,
+          timestamp: tomorrow10PM.getTime(),
+          repeatFrequency: RepeatFrequency.DAILY,
+        }
+      );
+      return;
+    }
+
+    // If costs NOT logged today yet:
+    const now = new Date();
+
+    const getTargetToday = (hours: number, minutes: number) => {
+      const d = new Date();
+      d.setHours(hours, minutes, 0, 0);
+      return d;
+    };
+
+    // 10:00 PM (22:00)
+    const time10PM = getTargetToday(22, 0);
+    if (now.getTime() < time10PM.getTime()) {
+      await notifee.createTriggerNotification(
+        {
+          id: ID_REMINDER_10PM,
+          title: "Log Daily Costs",
+          body: "Did you log your expenses today? Tap to record now!",
+          android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
+        },
+        { type: TriggerType.TIMESTAMP, timestamp: time10PM.getTime() }
+      );
+    }
+
+    // 11:00 PM (23:00)
+    const time11PM = getTargetToday(23, 0);
+    if (now.getTime() < time11PM.getTime()) {
+      await notifee.createTriggerNotification(
+        {
+          id: ID_REMINDER_11PM,
+          title: "Expense Reminder (11:00 PM)",
+          body: "Haven't logged expenses today yet? Take 10 seconds to update MC Tracker.",
+          android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
+        },
+        { type: TriggerType.TIMESTAMP, timestamp: time11PM.getTime() }
+      );
+    }
+
+    // 11:30 PM (23:30)
+    const time1130PM = getTargetToday(23, 30);
+    if (now.getTime() < time1130PM.getTime()) {
+      await notifee.createTriggerNotification(
+        {
+          id: ID_REMINDER_1130PM,
+          title: "Expense Reminder (11:30 PM)",
+          body: "Still haven't logged today's costs? Quick reminder before midnight!",
+          android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
+        },
+        { type: TriggerType.TIMESTAMP, timestamp: time1130PM.getTime() }
+      );
+    }
+
+    // 11:59 PM (23:59)
+    const time1159PM = getTargetToday(23, 59);
+    if (now.getTime() < time1159PM.getTime()) {
+      await notifee.createTriggerNotification(
+        {
+          id: ID_REMINDER_1159PM,
+          title: "Final Daily Reminder (11:59 PM)",
+          body: "Final reminder for today! Don't miss tracking today's expenses.",
+          android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
+        },
+        { type: TriggerType.TIMESTAMP, timestamp: time1159PM.getTime() }
+      );
+    }
+
+    // Next Day 2-Hour Interval Reminders ("Please log yesterday's costs...")
+    const startNextDay2AM = new Date();
+    startNextDay2AM.setDate(startNextDay2AM.getDate() + 1);
+    startNextDay2AM.setHours(2, 0, 0, 0);
+
+    await notifee.createTriggerNotification(
+      {
+        id: ID_YESTERDAY_2H,
+        title: "Log Yesterday's Costs",
+        body: "Please log yesterday's costs to keep your budget on track!",
+        android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
+      },
+      {
+        type: TriggerType.TIMESTAMP,
+        timestamp: startNextDay2AM.getTime(),
+        repeatFrequency: RepeatFrequency.HOURLY,
+      }
+    );
+
+    console.log("[Notification] Scheduled 10PM, 11PM, 11:30PM, 11:59PM & 2H yesterday reminders.");
+  } catch (error) {
+    console.error("[Notification] Failed to schedule daily reminders:", error);
+  }
+}
+
+/**
+ * Welcoming New Month Notification (Fires at 12:00 AM on the 1st of every month)
+ */
+export async function scheduleNewMonthWelcomingNotification() {
   try {
     await createNotificationChannel();
 
     const now = new Date();
-    const scheduledTime = new Date();
-    scheduledTime.setHours(20, 0, 0, 0); // 8:00 PM local time
-
-    // If past 8:00 PM today, schedule for 8:00 PM tomorrow
-    if (now.getTime() > scheduledTime.getTime()) {
-      scheduledTime.setDate(scheduledTime.getDate() + 1);
-    }
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0);
 
     await notifee.createTriggerNotification(
       {
-        id: "daily_8pm_reminder",
-        title: "MC Tracker Evening Reminder",
-        body: "Don't forget to record today's income & expenses!",
+        id: ID_NEW_MONTH,
+        title: "Happy New Month!",
+        body: "Welcome to a new month! Tap to review your financial goals and set your budget plan.",
         android: {
           channelId: NOTIFICATION_CHANNEL_ID,
           importance: AndroidImportance.HIGH,
@@ -95,82 +236,87 @@ export async function scheduleDaily8PMReminder() {
       },
       {
         type: TriggerType.TIMESTAMP,
-        timestamp: scheduledTime.getTime(),
-        repeatFrequency: RepeatFrequency.DAILY,
+        timestamp: nextMonth.getTime(),
+        repeatFrequency: RepeatFrequency.MONTHLY,
       }
     );
 
-    console.log("[Notification] Scheduled Daily 8:00 PM reminder for:", scheduledTime.toLocaleString());
+    console.log("[Notification] Scheduled New Month Welcoming Notification for:", nextMonth.toLocaleString());
   } catch (error) {
-    console.error("[Notification] Failed to schedule 8:00 PM daily reminder:", error);
+    console.error("[Notification] Failed to schedule new month notification:", error);
   }
 }
 
 /**
- * Checks budget utilization and triggers Push Notifications if 80% or 100% threshold crossed.
+ * Checks if Total Monthly Expenses surpasses the Monthly Budget Plan threshold.
  */
-const notifiedThresholds = new Set<string>();
+const monthlySurpassedNotified = new Set<string>();
 
-export async function checkBudgetThresholds(totalCosts: number, costLimit: number) {
-  if (!costLimit || costLimit <= 0) return;
+export async function checkMonthlyPlanSurpassed(totalCosts: number, monthlyCostLimit: number) {
+  if (!monthlyCostLimit || monthlyCostLimit <= 0) return;
 
-  const pct = (totalCosts / costLimit) * 100;
-  const key80 = `80_${costLimit}`;
-  const key100 = `100_${costLimit}`;
+  const currentMonthKey = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const key = `${currentMonthKey}_${monthlyCostLimit}`;
 
-  if (pct >= 100 && !notifiedThresholds.has(key100)) {
-    notifiedThresholds.add(key100);
-    const title = "⚠️ Budget Limit Exceeded!";
-    const body = `You have reached 100% of your active budget limit (Spent ETB ${totalCosts.toFixed(2)} of ETB ${costLimit.toFixed(2)}).`;
-    
-    await displayNotification(title, body, { type: "budget_exceeded" });
-  } else if (pct >= 80 && pct < 100 && !notifiedThresholds.has(key80)) {
-    notifiedThresholds.add(key80);
-    const title = "⚠️ Budget Limit Warning (80%)";
-    const body = `You have reached ${pct.toFixed(0)}% of your active budget limit (Spent ETB ${totalCosts.toFixed(2)} of ETB ${costLimit.toFixed(2)}).`;
-    
-    await displayNotification(title, body, { type: "budget_warning" });
+  if (totalCosts > monthlyCostLimit && !monthlySurpassedNotified.has(key)) {
+    monthlySurpassedNotified.add(key);
+
+    const title = "Monthly Budget Plan Surpassed!";
+    const body = `You have surpassed your monthly budget plan! Total spent: ETB ${totalCosts.toFixed(2)} of ETB ${monthlyCostLimit.toFixed(2)}.`;
+
+    await displayNotification(title, body, { type: "monthly_plan_surpassed" });
+  } else if (totalCosts >= monthlyCostLimit * 0.8 && totalCosts <= monthlyCostLimit && !monthlySurpassedNotified.has(`80_${key}`)) {
+    monthlySurpassedNotified.add(`80_${key}`);
+
+    const title = "Budget Plan Warning (80%)";
+    const body = `You have reached 80% of your active monthly budget plan (Spent ETB ${totalCosts.toFixed(2)} of ETB ${monthlyCostLimit.toFixed(2)}).`;
+
+    await displayNotification(title, body, { type: "budget_80_warning" });
   }
 }
 
 /**
- * Schedules a recurring notification every 2 minutes for testing purposes.
+ * Backwards-compatible alias for budget threshold checks
  */
-let recurringTimer: NodeJS.Timeout | null = null;
+export async function checkBudgetThresholds(totalCosts: number, monthlyCostLimit: number) {
+  return checkMonthlyPlanSurpassed(totalCosts, monthlyCostLimit);
+}
 
-export function start2MinuteNotificationSchedule() {
-  console.log("[Notification] Starting 2-minute recurring push notification scheduler...");
+/**
+ * Checks database for today's costs and initializes all notification schedules.
+ */
+export async function syncDailyNotificationState(userId?: string) {
+  try {
+    let hasLoggedToday = false;
 
-  if (recurringTimer) {
-    clearInterval(recurringTimer);
+    if (userId) {
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const { data } = await supabase
+        .from("costs")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("date", todayIso)
+        .limit(1);
+
+      hasLoggedToday = !!(data && data.length > 0);
+    }
+
+    await updateDailyCostReminders(hasLoggedToday);
+    await scheduleNewMonthWelcomingNotification();
+  } catch (err) {
+    console.error("[Notification] Error syncing daily notification state:", err);
   }
-
-  setTimeout(() => {
-    displayNotification(
-      "MC Tracker Reminder",
-      "Don't forget to log your daily income & expenses!",
-      { test: "true" }
-    );
-  }, 10000);
-
-  recurringTimer = setInterval(() => {
-    displayNotification(
-      "MC Tracker 2-Min Update",
-      "Keep your financial logs up-to-date in MC Tracker!",
-      { timestamp: new Date().toISOString() }
-    );
-  }, 120000);
 }
 
 /**
  * Initializes Firebase Cloud Messaging (FCM) & Local Notification Listeners.
  */
-export async function initNotificationService() {
+export async function initNotificationService(userId?: string) {
   console.log("[Notification] Initializing Notification Service...");
 
   const hasPermission = await requestNotificationPermission();
   if (!hasPermission) {
-    console.log("[Notification] Permission not granted, skipping FCM initialization.");
+    console.log("[Notification] Permission not granted, skipping notification scheduling.");
     return;
   }
 
@@ -196,11 +342,8 @@ export async function initNotificationService() {
     }
   });
 
-  // Schedule daily 8:00 PM reminder
-  scheduleDaily8PMReminder();
-
-  // Test schedule
-  start2MinuteNotificationSchedule();
+  // Sync schedules & triggers
+  await syncDailyNotificationState(userId);
 }
 
 /**
