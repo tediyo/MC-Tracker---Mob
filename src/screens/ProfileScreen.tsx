@@ -2,10 +2,10 @@ import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Linking, Platform } from "react-native";
 import {
   UserCheck,
-  Palette,
+  Moon,
   Pencil,
   ChevronRight,
-  Shield,
+  KeyRound,
   Calendar,
   Globe,
   HelpCircle,
@@ -15,7 +15,7 @@ import {
   TrendingUp,
   Receipt,
   Target,
-  Sparkles,
+  Radio,
 } from "lucide-react-native";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
@@ -313,7 +313,7 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
 
         {/* Dark Theme Toggle */}
         <SettingRow
-          icon={Palette}
+          icon={Moon}
           title="Dark Theme"
           subtitle={themeMode === "dark" ? "On (Dark Mode active)" : "Off (Light Mode active)"}
           hasSwitch={true}
@@ -324,7 +324,7 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
 
         {/* Live Floating Icon Toggle */}
         <SettingRow
-          icon={Sparkles}
+          icon={Radio}
           title="Live Floating Icon"
           subtitle={
             isLiveMode
@@ -339,7 +339,7 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
 
         {/* Change Password */}
         <SettingRow
-          icon={Shield}
+          icon={KeyRound}
           title="Change Password"
           onPress={() => setIsChangingPassword(true)}
           showDivider={false}

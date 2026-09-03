@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
-import { Edit2, Trash2 } from "lucide-react-native";
+import { Edit2, Trash2, Eye } from "lucide-react-native";
 import {
   COST_CATEGORIES,
   COST_CATEGORY_LABELS,
@@ -22,9 +22,6 @@ import { formatCurrency, formatDateByMode } from "../../lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../lib/supabase";
 
-/** The full, filterable expense history - lives on the History screen. Uses the same
- * ["mobile-costs", userId] query as CostsScreen's recent-transactions preview, so both
- * share one cache instead of double-fetching. */
 export function CostHistorySection() {
   const { user } = useAuth();
   const userId = user?.id || "";
@@ -46,6 +43,7 @@ export function CostHistorySection() {
   };
 
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [viewingDetail, setViewingDetail] = useState<any>(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
   const { data: costs = [], isLoading } = useQuery({
@@ -170,46 +168,126 @@ export function CostHistorySection() {
         <Text style={[styles.emptyText, { color: theme.textMuted }]}>No expense entries match these filters.</Text>
       ) : (
         filteredCosts.map((item) => (
-          <Card key={item.id} style={styles.historyCard}>
-            <View style={styles.historyRow}>
-              <View style={styles.historyLeft}>
-                <Text style={[styles.historyDate, { color: theme.textMuted }]}>{formatDateByMode(item.date, calendarMode)}</Text>
+          <TouchableOpacity key={item.id} activeOpacity={0.7} onPress={() => setViewingDetail(item)}>
+            <Card style={styles.historyCard}>
+              <View style={styles.historyRow}>
+                <View style={styles.historyLeft}>
+                  <Text style={[styles.historyDate, { color: theme.textMuted }]}>{formatDateByMode(item.date, calendarMode)}</Text>
 
-                <View style={styles.badgeRow}>
-                  <View style={[styles.catBadge, { backgroundColor: theme.primaryLight }]}>
-                    <Text style={[styles.catBadgeText, { color: theme.primary }]}>
-                      {COST_CATEGORY_LABELS[item.category as CostCategory]}
+                  <View style={styles.badgeRow}>
+                    <View style={[styles.catBadge, { backgroundColor: theme.primaryLight }]}>
+                      <Text style={[styles.catBadgeText, { color: theme.primary }]}>
+                        {COST_CATEGORY_LABELS[item.category as CostCategory]}
+                      </Text>
+                    </View>
+                    <Text style={[styles.subText, { color: theme.textSecondary }]}>
+                      {COST_SUBCATEGORY_LABELS[item.subcategory as CostSubcategory]}
                     </Text>
                   </View>
-                  <Text style={[styles.subText, { color: theme.textSecondary }]}>
-                    {COST_SUBCATEGORY_LABELS[item.subcategory as CostSubcategory]}
+
+                  {item.description ? (
+                    <Text style={[styles.historyDesc, { color: theme.textSecondary }]} numberOfLines={2}>{item.description}</Text>
+                  ) : null}
+                </View>
+
+                <View style={styles.historyRight}>
+                  <Text style={[styles.historyAmount, { color: theme.textPrimary }]}>
+                    {formatCurrency(Number(item.amount))}
                   </Text>
-                </View>
 
-                {item.description ? (
-                  <Text style={[styles.historyDesc, { color: theme.textSecondary }]}>{item.description}</Text>
-                ) : null}
-              </View>
+                  <View style={styles.actionsRow}>
+                    <TouchableOpacity onPress={() => setViewingDetail(item)} style={styles.actionBtn}>
+                      <Eye size={16} color={theme.primary} />
+                    </TouchableOpacity>
 
-              <View style={styles.historyRight}>
-                <Text style={[styles.historyAmount, { color: theme.textPrimary }]}>
-                  {formatCurrency(Number(item.amount))}
-                </Text>
+                    <TouchableOpacity onPress={() => setEditingItem(item)} style={styles.actionBtn}>
+                      <Edit2 size={16} color={theme.primary} />
+                    </TouchableOpacity>
 
-                <View style={styles.actionsRow}>
-                  <TouchableOpacity onPress={() => setEditingItem(item)} style={styles.actionBtn}>
-                    <Edit2 size={16} color={theme.primary} />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.actionBtn}>
-                    <Trash2 size={16} color={theme.danger} />
-                  </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.actionBtn}>
+                      <Trash2 size={16} color={theme.danger} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
-            </View>
-          </Card>
+            </Card>
+          </TouchableOpacity>
         ))
       )}
+
+      {/* Transaction Details Modal */}
+      <AppModal
+        visible={viewingDetail !== null}
+        onClose={() => setViewingDetail(null)}
+        title="Expense Details"
+        confirmLabel="Close"
+        onConfirm={() => setViewingDetail(null)}
+      >
+        {viewingDetail && (
+          <View style={{ gap: 12, paddingVertical: 4 }}>
+            <View style={{ borderRadius: 10, borderWidth: 1, borderColor: theme.cardBorder, overflow: "hidden" }}>
+              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Type</Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }}>Expense</Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Amount</Text>
+                <Text style={{ fontSize: 14, fontWeight: "800", color: theme.textPrimary }}>-{formatCurrency(Number(viewingDetail.amount))}</Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Date</Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }}>{formatDateByMode(viewingDetail.date, calendarMode)} ({viewingDetail.date})</Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Category</Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }}>{COST_CATEGORY_LABELS[viewingDetail.category as CostCategory]}</Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Subcategory</Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }}>{COST_SUBCATEGORY_LABELS[viewingDetail.subcategory as CostSubcategory]}</Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "flex-start", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted, width: 90 }}>Description</Text>
+                <Text style={{ fontSize: 13, fontWeight: "500", color: theme.textPrimary, flex: 1, textAlign: "right" }}>{viewingDetail.description || "—"}</Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "center", padding: 12, backgroundColor: theme.surface }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Record ID</Text>
+                <Text style={{ fontSize: 11, fontFamily: "monospace", color: theme.textMuted }}>{viewingDetail.id}</Text>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: theme.cardBorder, alignItems: "center" }}
+                onPress={() => {
+                  const item = viewingDetail;
+                  setViewingDetail(null);
+                  setEditingItem(item);
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textPrimary }}>Edit</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: theme.cardBorder, alignItems: "center" }}
+                onPress={() => {
+                  const item = viewingDetail;
+                  setViewingDetail(null);
+                  handleDelete(item.id);
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.danger }}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </AppModal>
 
       <AppModal
         visible={editingItem !== null}

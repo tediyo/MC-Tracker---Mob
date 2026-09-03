@@ -205,7 +205,7 @@ export type Database = {
       cost_category: "basic" | "fancy" | "extra"
       cost_subcategory:
         | "food"
-        | "asbeza"
+        | "house_hold"
         | "taxi"
         | "rent"
         | "wifi"
@@ -351,7 +351,7 @@ export const Constants = {
       cost_category: ["basic", "fancy", "extra"],
       cost_subcategory: [
         "food",
-        "asbeza",
+        "house_hold",
         "taxi",
         "rent",
         "wifi",

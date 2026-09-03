@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
-import { Edit2, Trash2 } from "lucide-react-native";
+import { Edit2, Trash2, Eye } from "lucide-react-native";
 import { INCOME_SOURCE_TYPES, INCOME_SOURCE_TYPE_LABELS, type IncomeSourceType } from "../../shared-types";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -16,9 +16,6 @@ import { formatCurrency, formatDateByMode } from "../../lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../lib/supabase";
 
-/** The full, filterable income history - lives on the History screen. Uses the same
- * ["mobile-incomes", userId] query as IncomeScreen's recent-transactions preview, so both
- * share one cache instead of double-fetching. */
 export function IncomeHistorySection() {
   const { user } = useAuth();
   const userId = user?.id || "";
@@ -40,6 +37,7 @@ export function IncomeHistorySection() {
   };
 
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [viewingDetail, setViewingDetail] = useState<any>(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
   const { data: incomes = [], isLoading } = useQuery({
@@ -156,39 +154,114 @@ export function IncomeHistorySection() {
         <Text style={[styles.emptyText, { color: theme.textMuted }]}>No income entries match these filters.</Text>
       ) : (
         filteredIncomes.map((item) => (
-          <Card key={item.id} style={styles.historyCard}>
-            <View style={styles.historyRow}>
-              <View style={styles.historyLeft}>
-                <Text style={[styles.historyDate, { color: theme.textMuted }]}>{formatDateByMode(item.date, calendarMode)}</Text>
-                <View style={[styles.sourceBadge, { backgroundColor: theme.primaryLight }]}>
-                  <Text style={[styles.sourceBadgeText, { color: theme.primary }]}>
-                    {INCOME_SOURCE_TYPE_LABELS[item.source_type as IncomeSourceType]}
+          <TouchableOpacity key={item.id} activeOpacity={0.7} onPress={() => setViewingDetail(item)}>
+            <Card style={styles.historyCard}>
+              <View style={styles.historyRow}>
+                <View style={styles.historyLeft}>
+                  <Text style={[styles.historyDate, { color: theme.textMuted }]}>{formatDateByMode(item.date, calendarMode)}</Text>
+                  <View style={[styles.sourceBadge, { backgroundColor: theme.primaryLight }]}>
+                    <Text style={[styles.sourceBadgeText, { color: theme.primary }]}>
+                      {INCOME_SOURCE_TYPE_LABELS[item.source_type as IncomeSourceType]}
+                    </Text>
+                  </View>
+                  {item.description ? (
+                    <Text style={[styles.historyDesc, { color: theme.textSecondary }]} numberOfLines={2}>{item.description}</Text>
+                  ) : null}
+                </View>
+
+                <View style={styles.historyRight}>
+                  <Text style={[styles.historyAmount, { color: theme.textPrimary }]}>
+                    {formatCurrency(Number(item.amount))}
                   </Text>
-                </View>
-                {item.description ? (
-                  <Text style={[styles.historyDesc, { color: theme.textSecondary }]}>{item.description}</Text>
-                ) : null}
-              </View>
 
-              <View style={styles.historyRight}>
-                <Text style={[styles.historyAmount, { color: theme.textPrimary }]}>
-                  {formatCurrency(Number(item.amount))}
-                </Text>
+                  <View style={styles.actionsRow}>
+                    <TouchableOpacity onPress={() => setViewingDetail(item)} style={styles.actionBtn}>
+                      <Eye size={16} color={theme.primary} />
+                    </TouchableOpacity>
 
-                <View style={styles.actionsRow}>
-                  <TouchableOpacity onPress={() => setEditingItem(item)} style={styles.actionBtn}>
-                    <Edit2 size={16} color={theme.primary} />
-                  </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setEditingItem(item)} style={styles.actionBtn}>
+                      <Edit2 size={16} color={theme.primary} />
+                    </TouchableOpacity>
 
-                  <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.actionBtn}>
-                    <Trash2 size={16} color={theme.danger} />
-                  </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.actionBtn}>
+                      <Trash2 size={16} color={theme.danger} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
-            </View>
-          </Card>
+            </Card>
+          </TouchableOpacity>
         ))
       )}
+
+      {/* Transaction Details Modal */}
+      <AppModal
+        visible={viewingDetail !== null}
+        onClose={() => setViewingDetail(null)}
+        title="Income Details"
+        confirmLabel="Close"
+        onConfirm={() => setViewingDetail(null)}
+      >
+        {viewingDetail && (
+          <View style={{ gap: 12, paddingVertical: 4 }}>
+            <View style={{ borderRadius: 10, borderWidth: 1, borderColor: theme.cardBorder, overflow: "hidden" }}>
+              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Type</Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }}>Income</Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Amount</Text>
+                <Text style={{ fontSize: 14, fontWeight: "800", color: theme.textPrimary }}>+{formatCurrency(Number(viewingDetail.amount))}</Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Date</Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }}>{formatDateByMode(viewingDetail.date, calendarMode)} ({viewingDetail.date})</Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Source Type</Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }}>{INCOME_SOURCE_TYPE_LABELS[viewingDetail.source_type as IncomeSourceType]}</Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "flex-start", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted, width: 90 }}>Description</Text>
+                <Text style={{ fontSize: 13, fontWeight: "500", color: theme.textPrimary, flex: 1, textAlign: "right" }}>{viewingDetail.description || "—"}</Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "center", padding: 12, backgroundColor: theme.surface }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Record ID</Text>
+                <Text style={{ fontSize: 11, fontFamily: "monospace", color: theme.textMuted }}>{viewingDetail.id}</Text>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: theme.cardBorder, alignItems: "center" }}
+                onPress={() => {
+                  const item = viewingDetail;
+                  setViewingDetail(null);
+                  setEditingItem(item);
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textPrimary }}>Edit</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: theme.cardBorder, alignItems: "center" }}
+                onPress={() => {
+                  const item = viewingDetail;
+                  setViewingDetail(null);
+                  handleDelete(item.id);
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.danger }}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </AppModal>
 
       <AppModal
         visible={editingItem !== null}
