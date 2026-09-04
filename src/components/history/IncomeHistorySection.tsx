@@ -109,7 +109,7 @@ export function IncomeHistorySection() {
     return (
       r.description?.toLowerCase().includes(term) ||
       INCOME_SOURCE_TYPE_LABELS[r.source_type as IncomeSourceType]?.toLowerCase().includes(term) ||
-      formatEthiopianDate(r.date).toLowerCase().includes(term) ||
+      formatDateByMode(r.date, calendarMode).toLowerCase().includes(term) ||
       r.amount.toString().includes(term)
     );
   });
@@ -205,32 +205,32 @@ export function IncomeHistorySection() {
         {viewingDetail && (
           <View style={{ gap: 12, paddingVertical: 4 }}>
             <View style={{ borderRadius: 10, borderWidth: 1, borderColor: theme.cardBorder, overflow: "hidden" }}>
-              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Type</Text>
                 <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }}>Income</Text>
               </View>
 
-              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Amount</Text>
                 <Text style={{ fontSize: 14, fontWeight: "800", color: theme.textPrimary }}>+{formatCurrency(Number(viewingDetail.amount))}</Text>
               </View>
 
-              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Date</Text>
                 <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }}>{formatDateByMode(viewingDetail.date, calendarMode)} ({viewingDetail.date})</Text>
               </View>
 
-              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Source Type</Text>
                 <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }}>{INCOME_SOURCE_TYPE_LABELS[viewingDetail.source_type as IncomeSourceType]}</Text>
               </View>
 
-              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "flex-start", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted, width: 90 }}>Description</Text>
                 <Text style={{ fontSize: 13, fontWeight: "500", color: theme.textPrimary, flex: 1, textAlign: "right" }}>{viewingDetail.description || "—"}</Text>
               </View>
 
-              <View style={{ flexDirection: "row", justifyContent: "between", alignItems: "center", padding: 12, backgroundColor: theme.surface }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, backgroundColor: theme.surface }}>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Record ID</Text>
                 <Text style={{ fontSize: 11, fontFamily: "monospace", color: theme.textMuted }}>{viewingDetail.id}</Text>
               </View>

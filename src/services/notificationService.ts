@@ -12,6 +12,7 @@ const ID_REMINDER_10PM = "reminder_1000pm";
 const ID_REMINDER_11PM = "reminder_1100pm";
 const ID_REMINDER_1130PM = "reminder_1130pm";
 const ID_REMINDER_1159PM = "reminder_1159pm";
+const ID_YESTERDAY_8PM = "reminder_yesterday_8pm";
 const ID_YESTERDAY_2H = "reminder_yesterday_2h";
 const ID_NEW_MONTH = "new_month_welcome";
 
@@ -78,26 +79,23 @@ export async function displayNotification(title: string, body: string, data?: Re
 }
 
 /**
- * Schedule Escalating Daily Reminders:
- * - 10:00 PM: First daily reminder
+ * Schedule Daily Reminders:
+ * - 8:00 PM: "Log Yesterday's Costs" (if yesterday's expenses are not logged)
+ * - 10:00 PM: First daily reminder for today
  * - 11:00 PM: Second reminder (if not logged yet)
  * - 11:30 PM: Third reminder (if not logged yet)
  * - 11:59 PM: Final reminder today (if not logged yet)
- * - Every 2 Hours next day: "Please log yesterday's costs..."
- *
- * If `hasLoggedToday` is true, cancels pending reminders for today!
  */
-export async function updateDailyCostReminders(hasLoggedToday: boolean) {
+export async function updateDailyCostReminders(hasLoggedToday: boolean, hasLoggedYesterday: boolean = true) {
   try {
     await createNotificationChannel();
 
+    // 1. Handle Today's Reminders (10:00 PM, 11:00 PM, 11:30 PM, 11:59 PM)
     if (hasLoggedToday) {
-      // User has logged costs today! Cancel pending reminders for today.
       await notifee.cancelNotification(ID_REMINDER_10PM);
       await notifee.cancelNotification(ID_REMINDER_11PM);
       await notifee.cancelNotification(ID_REMINDER_1130PM);
       await notifee.cancelNotification(ID_REMINDER_1159PM);
-      await notifee.cancelNotification(ID_YESTERDAY_2H);
       console.log("[Notification] Costs logged today! Suppressing pending daily reminders.");
 
       // Schedule tomorrow's 10:00 PM reminder
@@ -120,116 +118,148 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean) {
           type: TriggerType.TIMESTAMP,
           timestamp: tomorrow10PM.getTime(),
           repeatFrequency: RepeatFrequency.DAILY,
-          alarmManager: {
-            allowWhileIdle: true,
+          alarmManager: { allowWhileIdle: true },
+        }
+      );
+    } else {
+      const now = new Date();
+      const getTargetToday = (hours: number, minutes: number) => {
+        const d = new Date();
+        d.setHours(hours, minutes, 0, 0);
+        return d;
+      };
+
+      // 10:00 PM (22:00)
+      const time10PM = getTargetToday(22, 0);
+      if (now.getTime() < time10PM.getTime()) {
+        await notifee.createTriggerNotification(
+          {
+            id: ID_REMINDER_10PM,
+            title: "Log Daily Costs",
+            body: "Did you log your expenses today? Tap to record now!",
+            android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
           },
-        }
-      );
-      return;
-    }
-
-    // If costs NOT logged today yet:
-    const now = new Date();
-
-    const getTargetToday = (hours: number, minutes: number) => {
-      const d = new Date();
-      d.setHours(hours, minutes, 0, 0);
-      return d;
-    };
-
-    // 10:00 PM (22:00)
-    const time10PM = getTargetToday(22, 0);
-    if (now.getTime() < time10PM.getTime()) {
-      await notifee.createTriggerNotification(
-        {
-          id: ID_REMINDER_10PM,
-          title: "Log Daily Costs",
-          body: "Did you log your expenses today? Tap to record now!",
-          android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
-        },
-        {
-          type: TriggerType.TIMESTAMP,
-          timestamp: time10PM.getTime(),
-          alarmManager: { allowWhileIdle: true },
-        }
-      );
-    }
-
-    // 11:00 PM (23:00)
-    const time11PM = getTargetToday(23, 0);
-    if (now.getTime() < time11PM.getTime()) {
-      await notifee.createTriggerNotification(
-        {
-          id: ID_REMINDER_11PM,
-          title: "Expense Reminder (11:00 PM)",
-          body: "Haven't logged expenses today yet? Take 10 seconds to update MC Tracker.",
-          android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
-        },
-        {
-          type: TriggerType.TIMESTAMP,
-          timestamp: time11PM.getTime(),
-          alarmManager: { allowWhileIdle: true },
-        }
-      );
-    }
-
-    // 11:30 PM (23:30)
-    const time1130PM = getTargetToday(23, 30);
-    if (now.getTime() < time1130PM.getTime()) {
-      await notifee.createTriggerNotification(
-        {
-          id: ID_REMINDER_1130PM,
-          title: "Expense Reminder (11:30 PM)",
-          body: "Still haven't logged today's costs? Quick reminder before midnight!",
-          android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
-        },
-        {
-          type: TriggerType.TIMESTAMP,
-          timestamp: time1130PM.getTime(),
-          alarmManager: { allowWhileIdle: true },
-        }
-      );
-    }
-
-    // 11:59 PM (23:59)
-    const time1159PM = getTargetToday(23, 59);
-    if (now.getTime() < time1159PM.getTime()) {
-      await notifee.createTriggerNotification(
-        {
-          id: ID_REMINDER_1159PM,
-          title: "Final Daily Reminder (11:59 PM)",
-          body: "Final reminder for today! Don't miss tracking today's expenses.",
-          android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
-        },
-        {
-          type: TriggerType.TIMESTAMP,
-          timestamp: time1159PM.getTime(),
-          alarmManager: { allowWhileIdle: true },
-        }
-      );
-    }
-
-    // Next Day 2-Hour Interval Reminders ("Please log yesterday's costs...")
-    const startNextDay2AM = new Date();
-    startNextDay2AM.setDate(startNextDay2AM.getDate() + 1);
-    startNextDay2AM.setHours(2, 0, 0, 0);
-
-    await notifee.createTriggerNotification(
-      {
-        id: ID_YESTERDAY_2H,
-        title: "Log Yesterday's Costs",
-        body: "Please log yesterday's costs to keep your budget on track!",
-        android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
-      },
-      {
-        type: TriggerType.TIMESTAMP,
-        timestamp: startNextDay2AM.getTime(),
-        repeatFrequency: RepeatFrequency.HOURLY,
-        alarmManager: { allowWhileIdle: true },
+          {
+            type: TriggerType.TIMESTAMP,
+            timestamp: time10PM.getTime(),
+            alarmManager: { allowWhileIdle: true },
+          }
+        );
       }
-    );
 
-    console.log("[Notification] Scheduled 10PM, 11PM, 11:30PM, 11:59PM & 2H yesterday reminders.");
+      // 11:00 PM (23:00)
+      const time11PM = getTargetToday(23, 0);
+      if (now.getTime() < time11PM.getTime()) {
+        await notifee.createTriggerNotification(
+          {
+            id: ID_REMINDER_11PM,
+            title: "Expense Reminder (11:00 PM)",
+            body: "Haven't logged expenses today yet? Take 10 seconds to update MC Tracker.",
+            android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
+          },
+          {
+            type: TriggerType.TIMESTAMP,
+            timestamp: time11PM.getTime(),
+            alarmManager: { allowWhileIdle: true },
+          }
+        );
+      }
+
+      // 11:30 PM (23:30)
+      const time1130PM = getTargetToday(23, 30);
+      if (now.getTime() < time1130PM.getTime()) {
+        await notifee.createTriggerNotification(
+          {
+            id: ID_REMINDER_1130PM,
+            title: "Expense Reminder (11:30 PM)",
+            body: "Still haven't logged today's costs? Quick reminder before midnight!",
+            android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
+          },
+          {
+            type: TriggerType.TIMESTAMP,
+            timestamp: time1130PM.getTime(),
+            alarmManager: { allowWhileIdle: true },
+          }
+        );
+      }
+
+      // 11:59 PM (23:59)
+      const time1159PM = getTargetToday(23, 59);
+      if (now.getTime() < time1159PM.getTime()) {
+        await notifee.createTriggerNotification(
+          {
+            id: ID_REMINDER_1159PM,
+            title: "Final Daily Reminder (11:59 PM)",
+            body: "Final reminder for today! Don't miss tracking today's expenses.",
+            android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
+          },
+          {
+            type: TriggerType.TIMESTAMP,
+            timestamp: time1159PM.getTime(),
+            alarmManager: { allowWhileIdle: true },
+          }
+        );
+      }
+    }
+
+    // 2. Handle Yesterday's Unlogged Alerts: Every 2 Hours starting from 2:00 AM (2, 4, 6, 8, 10, 12, 14, 16, 18, 20 [8 PM], 22 [10 PM])
+    const YESTERDAY_2H_SLOTS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22];
+
+    if (hasLoggedYesterday) {
+      for (const h of YESTERDAY_2H_SLOTS) {
+        await notifee.cancelNotification(`reminder_yesterday_${h}h`);
+      }
+      await notifee.cancelNotification(ID_YESTERDAY_8PM);
+      await notifee.cancelNotification(ID_YESTERDAY_2H);
+      console.log("[Notification] Yesterday's costs logged! Cancelled all 2-hour yesterday reminders.");
+    } else {
+      const now = new Date();
+      console.log("[Notification] Yesterday's costs NOT logged! Scheduling 2-hour interval reminders (2 AM, 4 AM, ... 8 PM, 10 PM).");
+
+      for (const h of YESTERDAY_2H_SLOTS) {
+        const slotTime = new Date();
+        slotTime.setHours(h, 0, 0, 0);
+
+        if (now.getTime() < slotTime.getTime()) {
+          // Future slot today: schedule exact alarm trigger
+          await notifee.createTriggerNotification(
+            {
+              id: `reminder_yesterday_${h}h`,
+              title: "Log Yesterday's Costs",
+              body: "Please log yesterday's costs to keep your budget on track!",
+              android: {
+                channelId: NOTIFICATION_CHANNEL_ID,
+                importance: AndroidImportance.HIGH,
+                pressAction: { id: "default" },
+              },
+            },
+            {
+              type: TriggerType.TIMESTAMP,
+              timestamp: slotTime.getTime(),
+              alarmManager: { allowWhileIdle: true },
+            }
+          );
+        }
+      }
+
+      // If the app is open right around the 2-hour slot (e.g. within 30 mins after 8:00 PM),
+      // display the notification immediately so the user doesn't miss the current 2-hour window!
+      const currentSlotHour = Math.floor(now.getHours() / 2) * 2;
+      if (YESTERDAY_2H_SLOTS.includes(currentSlotHour)) {
+        const currentSlotTime = new Date();
+        currentSlotTime.setHours(currentSlotHour, 0, 0, 0);
+        const diffMinutes = (now.getTime() - currentSlotTime.getTime()) / (1000 * 60);
+
+        if (diffMinutes >= 0 && diffMinutes <= 30) {
+          await displayNotification(
+            "Log Yesterday's Costs",
+            "Please log yesterday's costs to keep your budget on track!",
+            { type: "yesterday_unlogged" }
+          );
+          console.log(`[Notification] Displayed notification for ${currentSlotHour}:00 window.`);
+        }
+      }
+    }
   } catch (error) {
     console.error("[Notification] Failed to schedule daily reminders:", error);
   }
@@ -359,20 +389,36 @@ export async function checkBudgetThresholds(totalCosts: number, monthlyCostLimit
 export async function syncDailyNotificationState(userId?: string) {
   try {
     let hasLoggedToday = false;
+    let hasLoggedYesterday = true;
 
     if (userId) {
-      const todayIso = new Date().toISOString().slice(0, 10);
-      const { data } = await supabase
-        .from("costs")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("date", todayIso)
-        .limit(1);
+      const now = new Date();
+      const todayIso = now.toISOString().slice(0, 10);
 
-      hasLoggedToday = !!(data && data.length > 0);
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayIso = yesterday.toISOString().slice(0, 10);
+
+      const [todayRes, yesterdayRes] = await Promise.all([
+        supabase
+          .from("costs")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("date", todayIso)
+          .limit(1),
+        supabase
+          .from("costs")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("date", yesterdayIso)
+          .limit(1),
+      ]);
+
+      hasLoggedToday = !!(todayRes.data && todayRes.data.length > 0);
+      hasLoggedYesterday = !!(yesterdayRes.data && yesterdayRes.data.length > 0);
     }
 
-    await updateDailyCostReminders(hasLoggedToday);
+    await updateDailyCostReminders(hasLoggedToday, hasLoggedYesterday);
     await scheduleNewMonthWelcomingNotification();
   } catch (err) {
     console.error("[Notification] Error syncing daily notification state:", err);
