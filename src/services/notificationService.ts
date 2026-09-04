@@ -90,13 +90,16 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean, hasLogge
   try {
     await createNotificationChannel();
 
+    // Cancel any legacy test triggers
+    await notifee.cancelNotification("reminder_today_2min_test");
+    await notifee.cancelNotification("reminder_yesterday_2min_test");
+
     // 1. Handle Today's Reminders (10:00 PM, 11:00 PM, 11:30 PM, 11:59 PM)
     if (hasLoggedToday) {
       await notifee.cancelNotification(ID_REMINDER_10PM);
       await notifee.cancelNotification(ID_REMINDER_11PM);
       await notifee.cancelNotification(ID_REMINDER_1130PM);
       await notifee.cancelNotification(ID_REMINDER_1159PM);
-      await notifee.cancelNotification("reminder_today_2min_test");
       console.log("[Notification] Costs logged today! Suppressing pending daily reminders.");
 
       // Schedule tomorrow's 10:00 PM reminder
@@ -130,39 +133,13 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean, hasLogge
         return d;
       };
 
-      // If it's already past 10:00 PM and today's costs are unlogged, display immediately on login
-      // and schedule a 2-minute test trigger!
-      if (now.getHours() >= 22) {
-        await displayNotification(
-          "Daily Expense Reminder",
-          "Did you log your expenses today? Tap to record now!",
-          { type: "daily_reminder" }
-        );
-
-        const twoMinLater = Date.now() + 2 * 60 * 1000;
-        await notifee.createTriggerNotification(
-          {
-            id: "reminder_today_2min_test",
-            title: "Daily Expense Reminder (2-Min Check)",
-            body: "Did you log your expenses today? Tap to record now!",
-            android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
-          },
-          {
-            type: TriggerType.TIMESTAMP,
-            timestamp: twoMinLater,
-            alarmManager: { allowWhileIdle: true },
-          }
-        );
-        console.log("[Notification] Past 10:00 PM: Displayed daily reminder & scheduled 2-min check.");
-      }
-
-      // 10:00 PM (22:00)
+      // 10:00 PM (22:00) - 1st Daily Reminder
       const time10PM = getTargetToday(22, 0);
       if (now.getTime() < time10PM.getTime()) {
         await notifee.createTriggerNotification(
           {
             id: ID_REMINDER_10PM,
-            title: "Log Daily Costs",
+            title: "Daily Expense Reminder",
             body: "Did you log your expenses today? Tap to record now!",
             android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
           },
@@ -174,7 +151,7 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean, hasLogge
         );
       }
 
-      // 11:00 PM (23:00)
+      // 11:00 PM (23:00) - 2nd Escalation
       const time11PM = getTargetToday(23, 0);
       if (now.getTime() < time11PM.getTime()) {
         await notifee.createTriggerNotification(
@@ -192,7 +169,7 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean, hasLogge
         );
       }
 
-      // 11:30 PM (23:30)
+      // 11:30 PM (23:30) - 3rd Escalation
       const time1130PM = getTargetToday(23, 30);
       if (now.getTime() < time1130PM.getTime()) {
         await notifee.createTriggerNotification(
@@ -210,7 +187,7 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean, hasLogge
         );
       }
 
-      // 11:59 PM (23:59)
+      // 11:59 PM (23:59) - Final Midnight Reminder
       const time1159PM = getTargetToday(23, 59);
       if (now.getTime() < time1159PM.getTime()) {
         await notifee.createTriggerNotification(
@@ -229,20 +206,19 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean, hasLogge
       }
     }
 
-    // 2. Handle Yesterday's Unlogged Alerts: Every 2 Hours starting from 2:00 AM (2, 4, 6, 8, 10, 12, 14, 16, 18, 20 [8 PM], 22 [10 PM])
+    // 2. Handle Yesterday's Unlogged Alerts: Every 2 Hours starting from 2:00 AM (2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22:00)
     const YESTERDAY_2H_SLOTS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22];
 
     if (hasLoggedYesterday) {
       for (const h of YESTERDAY_2H_SLOTS) {
         await notifee.cancelNotification(`reminder_yesterday_${h}h`);
       }
-      await notifee.cancelNotification("reminder_yesterday_2min_test");
       await notifee.cancelNotification(ID_YESTERDAY_8PM);
       await notifee.cancelNotification(ID_YESTERDAY_2H);
       console.log("[Notification] Yesterday's costs logged! Cancelled all 2-hour yesterday reminders.");
     } else {
       const now = new Date();
-      console.log("[Notification] Yesterday's costs NOT logged! Scheduling 2-hour interval reminders (2 AM, 4 AM, ... 8 PM, 10 PM).");
+      console.log("[Notification] Yesterday's costs NOT logged! Scheduling 2-hour interval reminders (2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22:00).");
 
       for (const h of YESTERDAY_2H_SLOTS) {
         const slotTime = new Date();
@@ -269,35 +245,12 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean, hasLogge
           );
         }
       }
-
-      // Immediate alert on login if yesterday is unlogged
-      await displayNotification(
-        "Log Yesterday's Costs",
-        "Please log yesterday's costs to keep your budget on track!",
-        { type: "yesterday_unlogged" }
-      );
-
-      // Schedule 2-minute test reminder for background verification
-      const twoMinLater = Date.now() + 2 * 60 * 1000;
-      await notifee.createTriggerNotification(
-        {
-          id: "reminder_yesterday_2min_test",
-          title: "Log Yesterday's Costs (2-Min Check)",
-          body: "Please log yesterday's costs to keep your budget on track!",
-          android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
-        },
-        {
-          type: TriggerType.TIMESTAMP,
-          timestamp: twoMinLater,
-          alarmManager: { allowWhileIdle: true },
-        }
-      );
-      console.log("[Notification] Scheduled 2-minute yesterday test trigger.");
     }
   } catch (error) {
     console.error("[Notification] Failed to schedule daily reminders:", error);
   }
 }
+
 
 /**
  * Welcoming New Month Notification (Fires at 12:00 AM on the 1st of every month).
