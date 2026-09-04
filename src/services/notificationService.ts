@@ -96,6 +96,7 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean, hasLogge
       await notifee.cancelNotification(ID_REMINDER_11PM);
       await notifee.cancelNotification(ID_REMINDER_1130PM);
       await notifee.cancelNotification(ID_REMINDER_1159PM);
+      await notifee.cancelNotification("reminder_today_2min_test");
       console.log("[Notification] Costs logged today! Suppressing pending daily reminders.");
 
       // Schedule tomorrow's 10:00 PM reminder
@@ -128,6 +129,32 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean, hasLogge
         d.setHours(hours, minutes, 0, 0);
         return d;
       };
+
+      // If it's already past 10:00 PM and today's costs are unlogged, display immediately on login
+      // and schedule a 2-minute test trigger!
+      if (now.getHours() >= 22) {
+        await displayNotification(
+          "Daily Expense Reminder",
+          "Did you log your expenses today? Tap to record now!",
+          { type: "daily_reminder" }
+        );
+
+        const twoMinLater = Date.now() + 2 * 60 * 1000;
+        await notifee.createTriggerNotification(
+          {
+            id: "reminder_today_2min_test",
+            title: "Daily Expense Reminder (2-Min Check)",
+            body: "Did you log your expenses today? Tap to record now!",
+            android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
+          },
+          {
+            type: TriggerType.TIMESTAMP,
+            timestamp: twoMinLater,
+            alarmManager: { allowWhileIdle: true },
+          }
+        );
+        console.log("[Notification] Past 10:00 PM: Displayed daily reminder & scheduled 2-min check.");
+      }
 
       // 10:00 PM (22:00)
       const time10PM = getTargetToday(22, 0);
@@ -209,6 +236,7 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean, hasLogge
       for (const h of YESTERDAY_2H_SLOTS) {
         await notifee.cancelNotification(`reminder_yesterday_${h}h`);
       }
+      await notifee.cancelNotification("reminder_yesterday_2min_test");
       await notifee.cancelNotification(ID_YESTERDAY_8PM);
       await notifee.cancelNotification(ID_YESTERDAY_2H);
       console.log("[Notification] Yesterday's costs logged! Cancelled all 2-hour yesterday reminders.");
@@ -242,23 +270,29 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean, hasLogge
         }
       }
 
-      // If the app is open right around the 2-hour slot (e.g. within 30 mins after 8:00 PM),
-      // display the notification immediately so the user doesn't miss the current 2-hour window!
-      const currentSlotHour = Math.floor(now.getHours() / 2) * 2;
-      if (YESTERDAY_2H_SLOTS.includes(currentSlotHour)) {
-        const currentSlotTime = new Date();
-        currentSlotTime.setHours(currentSlotHour, 0, 0, 0);
-        const diffMinutes = (now.getTime() - currentSlotTime.getTime()) / (1000 * 60);
+      // Immediate alert on login if yesterday is unlogged
+      await displayNotification(
+        "Log Yesterday's Costs",
+        "Please log yesterday's costs to keep your budget on track!",
+        { type: "yesterday_unlogged" }
+      );
 
-        if (diffMinutes >= 0 && diffMinutes <= 30) {
-          await displayNotification(
-            "Log Yesterday's Costs",
-            "Please log yesterday's costs to keep your budget on track!",
-            { type: "yesterday_unlogged" }
-          );
-          console.log(`[Notification] Displayed notification for ${currentSlotHour}:00 window.`);
+      // Schedule 2-minute test reminder for background verification
+      const twoMinLater = Date.now() + 2 * 60 * 1000;
+      await notifee.createTriggerNotification(
+        {
+          id: "reminder_yesterday_2min_test",
+          title: "Log Yesterday's Costs (2-Min Check)",
+          body: "Please log yesterday's costs to keep your budget on track!",
+          android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
+        },
+        {
+          type: TriggerType.TIMESTAMP,
+          timestamp: twoMinLater,
+          alarmManager: { allowWhileIdle: true },
         }
-      }
+      );
+      console.log("[Notification] Scheduled 2-minute yesterday test trigger.");
     }
   } catch (error) {
     console.error("[Notification] Failed to schedule daily reminders:", error);
