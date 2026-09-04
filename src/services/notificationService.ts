@@ -1,7 +1,9 @@
 import notifee, { AndroidImportance, TriggerType, RepeatFrequency } from "@notifee/react-native";
 import messaging from "@react-native-firebase/messaging";
 import { PermissionsAndroid, Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
+import { getEthiopianDate, toGregorianDate, ETHIOPIAN_MONTHS } from "../shared-types/ethiopian-calendar";
 
 export const NOTIFICATION_CHANNEL_ID = "mc_tracker_notifications";
 
@@ -118,6 +120,9 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean) {
           type: TriggerType.TIMESTAMP,
           timestamp: tomorrow10PM.getTime(),
           repeatFrequency: RepeatFrequency.DAILY,
+          alarmManager: {
+            allowWhileIdle: true,
+          },
         }
       );
       return;
@@ -142,7 +147,11 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean) {
           body: "Did you log your expenses today? Tap to record now!",
           android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
         },
-        { type: TriggerType.TIMESTAMP, timestamp: time10PM.getTime() }
+        {
+          type: TriggerType.TIMESTAMP,
+          timestamp: time10PM.getTime(),
+          alarmManager: { allowWhileIdle: true },
+        }
       );
     }
 
@@ -156,7 +165,11 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean) {
           body: "Haven't logged expenses today yet? Take 10 seconds to update MC Tracker.",
           android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
         },
-        { type: TriggerType.TIMESTAMP, timestamp: time11PM.getTime() }
+        {
+          type: TriggerType.TIMESTAMP,
+          timestamp: time11PM.getTime(),
+          alarmManager: { allowWhileIdle: true },
+        }
       );
     }
 
@@ -170,7 +183,11 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean) {
           body: "Still haven't logged today's costs? Quick reminder before midnight!",
           android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
         },
-        { type: TriggerType.TIMESTAMP, timestamp: time1130PM.getTime() }
+        {
+          type: TriggerType.TIMESTAMP,
+          timestamp: time1130PM.getTime(),
+          alarmManager: { allowWhileIdle: true },
+        }
       );
     }
 
@@ -184,7 +201,11 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean) {
           body: "Final reminder for today! Don't miss tracking today's expenses.",
           android: { channelId: NOTIFICATION_CHANNEL_ID, importance: AndroidImportance.HIGH, pressAction: { id: "default" } },
         },
-        { type: TriggerType.TIMESTAMP, timestamp: time1159PM.getTime() }
+        {
+          type: TriggerType.TIMESTAMP,
+          timestamp: time1159PM.getTime(),
+          alarmManager: { allowWhileIdle: true },
+        }
       );
     }
 
@@ -204,6 +225,7 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean) {
         type: TriggerType.TIMESTAMP,
         timestamp: startNextDay2AM.getTime(),
         repeatFrequency: RepeatFrequency.HOURLY,
+        alarmManager: { allowWhileIdle: true },
       }
     );
 
@@ -214,34 +236,83 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean) {
 }
 
 /**
- * Welcoming New Month Notification (Fires at 12:00 AM on the 1st of every month)
+ * Welcoming New Month Notification (Fires at 12:00 AM on the 1st of every month).
+ * Dynamically computes whether the 1st day of the next month is Ethiopian or Gregorian
+ * based on the user's preference configured in the Profile page.
  */
-export async function scheduleNewMonthWelcomingNotification() {
+export async function scheduleNewMonthWelcomingNotification(preferredMode?: "ethiopian" | "gregorian") {
   try {
     await createNotificationChannel();
 
+    // Cancel existing scheduled new month notification to avoid duplicates or stale triggers
+    await notifee.cancelNotification(ID_NEW_MONTH);
+
+    let mode = preferredMode;
+    if (!mode) {
+      const saved = await AsyncStorage.getItem("@mc-tracker/calendar-mode");
+      mode = (saved === "gregorian" ? "gregorian" : "ethiopian");
+    }
+
     const now = new Date();
-    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0);
+    let triggerDate: Date;
+    let title = "Happy New Month!";
+    let body = "Welcome to a new month! Tap to review your financial goals and set your budget plan.";
 
-    await notifee.createTriggerNotification(
-      {
-        id: ID_NEW_MONTH,
-        title: "Happy New Month!",
-        body: "Welcome to a new month! Tap to review your financial goals and set your budget plan.",
-        android: {
-          channelId: NOTIFICATION_CHANNEL_ID,
-          importance: AndroidImportance.HIGH,
-          pressAction: { id: "default" },
-        },
-      },
-      {
-        type: TriggerType.TIMESTAMP,
-        timestamp: nextMonth.getTime(),
-        repeatFrequency: RepeatFrequency.MONTHLY,
+    if (mode === "gregorian") {
+      // 12:00 AM on the 1st of the next Gregorian month
+      triggerDate = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
+      title = "Happy New Month!";
+      body = "Welcome to a new month! Tap to review your financial goals and set your budget plan.";
+    } else {
+      // 12:00 AM on the 1st of the next Ethiopian month
+      const ethToday = getEthiopianDate(now);
+      let nextEthYear = ethToday.year;
+      let nextEthMonth = ethToday.month + 1;
+      if (nextEthMonth > 13) {
+        nextEthMonth = 1;
+        nextEthYear += 1;
       }
-    );
 
-    console.log("[Notification] Scheduled New Month Welcoming Notification for:", nextMonth.toLocaleString());
+      triggerDate = toGregorianDate(nextEthYear, nextEthMonth, 1);
+      triggerDate.setHours(0, 0, 0, 0);
+
+      const monthInfo = ETHIOPIAN_MONTHS.find((m) => m.number === nextEthMonth);
+      const monthName = monthInfo ? `${monthInfo.nameEn} (${monthInfo.nameAm})` : `Month ${nextEthMonth}`;
+
+      if (nextEthMonth === 1) {
+        title = "እንኳን ለአዲሱ ዓመት አደረሳችሁ! (Happy New Year!)";
+        body = `Welcome to the new Ethiopian year ${nextEthYear}! Tap to review your annual and monthly financial goals.`;
+      } else {
+        title = "መልካም አዲስ ወር! (Happy New Month!)";
+        body = `Welcome to ${monthName}! Tap to review your financial goals and set your budget plan.`;
+      }
+    }
+
+    if (triggerDate.getTime() > now.getTime()) {
+      await notifee.createTriggerNotification(
+        {
+          id: ID_NEW_MONTH,
+          title: title,
+          body: body,
+          data: {
+            type: "new_month_welcome",
+            calendarMode: mode,
+          },
+          android: {
+            channelId: NOTIFICATION_CHANNEL_ID,
+            importance: AndroidImportance.HIGH,
+            pressAction: { id: "default" },
+          },
+        },
+        {
+          type: TriggerType.TIMESTAMP,
+          timestamp: triggerDate.getTime(),
+          alarmManager: { allowWhileIdle: true },
+        }
+      );
+
+      console.log(`[Notification] Scheduled New Month Welcoming Notification (${mode}) for: ${triggerDate.toLocaleString()} (Title: "${title}")`);
+    }
   } catch (error) {
     console.error("[Notification] Failed to schedule new month notification:", error);
   }
@@ -344,6 +415,9 @@ export async function initNotificationService(userId?: string) {
 
   // Sync schedules & triggers
   await syncDailyNotificationState(userId);
+
+  // Clean up any test notification trigger
+  await notifee.cancelNotification("test_swipe_notification");
 }
 
 /**
