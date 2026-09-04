@@ -20,14 +20,19 @@ import {
   Download,
   Plus,
   Target,
+  Filter,
+  X,
 } from "lucide-react-native";
 import {
   ETHIOPIAN_MONTHS,
   getEthiopianDate,
   toGregorianDate,
   getDaysInEthiopianMonth,
+  COST_CATEGORIES,
+  COST_SUBCATEGORIES,
   COST_CATEGORY_LABELS,
   COST_SUBCATEGORY_LABELS,
+  CATEGORY_SUBCATEGORY_MAP,
   INCOME_SOURCE_TYPE_LABELS,
   type CostCategory,
   type CostSubcategory,
@@ -102,12 +107,65 @@ export function DashboardScreen() {
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   const [analyticsFilter, setAnalyticsFilter] = useState<"all" | "incomes" | "costs">("all");
+  const [categoryFilter, setCategoryFilter] = useState<"all" | CostCategory>("all");
+  const [subcategoryFilter, setSubcategoryFilter] = useState<"all" | CostSubcategory>("all");
+  const [isFilterOpen, setIsFilterOpen] = useState<boolean>(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState<boolean>(false);
   const [timeframe, setTimeframe] = useState<TimeFrame>("monthly");
   const [refYear, setRefYear] = useState<number>(currentEth.year);
   const [refMonth, setRefMonth] = useState<number>(currentEth.month);
   const [refWeek, setRefWeek] = useState<number>(weekBucketForDay(currentEth.day));
   const [refDay, setRefDay] = useState<number>(currentEth.day);
+
+  const availableSubcategories = useMemo(() => {
+    if (categoryFilter !== "all") {
+      return CATEGORY_SUBCATEGORY_MAP[categoryFilter as CostCategory] || [];
+    }
+    return COST_SUBCATEGORIES;
+  }, [categoryFilter]);
+
+  const categoryFilterOptions = useMemo(
+    () => [
+      { label: "All Categories", value: "all" },
+      ...COST_CATEGORIES.map((c) => ({ label: COST_CATEGORY_LABELS[c], value: c })),
+    ],
+    [],
+  );
+
+  const subcategoryFilterOptions = useMemo(
+    () => [
+      { label: "All Subcategories", value: "all" },
+      ...availableSubcategories.map((s) => ({
+        label: COST_SUBCATEGORY_LABELS[s as CostSubcategory] || s,
+        value: s,
+      })),
+    ],
+    [availableSubcategories],
+  );
+
+  const handleCategoryFilterChange = (val: any) => {
+    const cat = val as "all" | CostCategory;
+    setCategoryFilter(cat);
+    if (cat !== "all") {
+      const validSubs = CATEGORY_SUBCATEGORY_MAP[cat as CostCategory];
+      if (subcategoryFilter !== "all" && !validSubs.includes(subcategoryFilter as CostSubcategory)) {
+        setSubcategoryFilter("all");
+      }
+    }
+  };
+
+  const handleSubcategoryFilterChange = (val: any) => {
+    const sub = val as "all" | CostSubcategory;
+    setSubcategoryFilter(sub);
+    if (sub !== "all" && categoryFilter === "all") {
+      for (const [cat, subs] of Object.entries(CATEGORY_SUBCATEGORY_MAP)) {
+        if (subs.includes(sub as CostSubcategory)) {
+          setCategoryFilter(cat as CostCategory);
+          break;
+        }
+      }
+    }
+  };
 
   // Collapsible Comparison State
   const [isComparisonOpen, setIsComparisonOpen] = useState<boolean>(false);
@@ -161,7 +219,7 @@ export function DashboardScreen() {
   }, [timeframe, refYear, refMonth, refWeek, refDay]);
 
   // Fetch Dashboard Core Metrics
-  const { data: dashboardData, isLoading, refetch } = useQuery({
+  const { data: rawData, isLoading, refetch } = useQuery({
     queryKey: ["mobile-dashboard", userId, timeframe, refYear, refMonth, refWeek, refDay],
     queryFn: async () => {
       const startIso = formatIso(rangeStart);
@@ -191,60 +249,79 @@ export function DashboardScreen() {
       if (costError) console.error("[Dashboard] Costs error:", costError);
       if (planError) console.error("[Dashboard] Plans error:", planError);
 
-      const totalInc = (incomes || []).reduce((acc, r) => acc + Number(r.amount), 0);
-      const totalCost = (costs || []).reduce((acc, r) => acc + Number(r.amount), 0);
-
-      // Budget targets resolve for monthly match - convert to Number to guard against type mismatches
-      const activePlan =
-        timeframe === "monthly"
-          ? (plans || []).find((p) => Number(p.year) === Number(refYear) && Number(p.month) === Number(refMonth))
-          : undefined;
-
-      const costLimit = activePlan && activePlan.target_cost_limit != null ? Number(activePlan.target_cost_limit) : null;
-      const savingsGoal = activePlan && activePlan.target_savings_goal != null ? Number(activePlan.target_savings_goal) : null;
-
-      const basicCost = (costs || [])
-        .filter((c) => c.category === "basic")
-        .reduce((sum, c) => sum + Number(c.amount), 0);
-      const fancyCost = (costs || [])
-        .filter((c) => c.category === "fancy")
-        .reduce((sum, c) => sum + Number(c.amount), 0);
-      const extraCost = (costs || [])
-        .filter((c) => c.category === "extra")
-        .reduce((sum, c) => sum + Number(c.amount), 0);
-
-      // Top 3 Expense Subcategories
-      const subcategoryMap: Record<string, number> = {};
-      (costs || []).forEach((c) => {
-        const sub = c.subcategory || "other";
-        subcategoryMap[sub] = (subcategoryMap[sub] || 0) + Number(c.amount);
-      });
-
-      const topSubcategories = Object.entries(subcategoryMap)
-        .map(([sub, amount]) => ({ subcategory: sub as CostSubcategory, amount }))
-        .sort((a, b) => b.amount - a.amount)
-        .slice(0, 3);
-
-      if (costLimit && costLimit > 0) {
-        checkBudgetThresholds(totalCost, costLimit);
-        checkMonthlyPlanSurpassed(totalCost, costLimit);
-      }
-
       return {
-        totalIncome: totalInc,
-        totalCosts: totalCost,
-        netProfitLoss: totalInc - totalCost,
-        costLimit,
-        savingsGoal,
-        costVariance: costLimit !== null ? costLimit - totalCost : null,
-        basicCost,
-        fancyCost,
-        extraCost,
-        topSubcategories,
+        incomes: incomes || [],
+        costs: costs || [],
+        plans: plans || [],
       };
     },
     enabled: !!userId,
   });
+
+  const dashboardData = useMemo(() => {
+    if (!rawData) return null;
+    const { incomes, costs, plans } = rawData;
+
+    const filteredCosts = costs.filter((c: any) => {
+      if (categoryFilter !== "all" && c.category !== categoryFilter) return false;
+      if (subcategoryFilter !== "all" && c.subcategory !== subcategoryFilter) return false;
+      return true;
+    });
+
+    const totalInc = incomes.reduce((acc: number, r: any) => acc + Number(r.amount), 0);
+    const totalCost = filteredCosts.reduce((acc: number, r: any) => acc + Number(r.amount), 0);
+
+    // Budget targets resolve for monthly match - convert to Number to guard against type mismatches
+    const activePlan =
+      timeframe === "monthly"
+        ? plans.find((p: any) => Number(p.year) === Number(refYear) && Number(p.month) === Number(refMonth))
+        : undefined;
+
+    const costLimit = activePlan && activePlan.target_cost_limit != null ? Number(activePlan.target_cost_limit) : null;
+    const savingsGoal = activePlan && activePlan.target_savings_goal != null ? Number(activePlan.target_savings_goal) : null;
+
+    const basicCost = filteredCosts
+      .filter((c: any) => c.category === "basic")
+      .reduce((sum: number, c: any) => sum + Number(c.amount), 0);
+    const fancyCost = filteredCosts
+      .filter((c: any) => c.category === "fancy")
+      .reduce((sum: number, c: any) => sum + Number(c.amount), 0);
+    const extraCost = filteredCosts
+      .filter((c: any) => c.category === "extra")
+      .reduce((sum: number, c: any) => sum + Number(c.amount), 0);
+
+    // Top 3 Expense Subcategories
+    const subcategoryMap: Record<string, number> = {};
+    filteredCosts.forEach((c: any) => {
+      const sub = c.subcategory || "other";
+      subcategoryMap[sub] = (subcategoryMap[sub] || 0) + Number(c.amount);
+    });
+
+    const topSubcategories = Object.entries(subcategoryMap)
+      .map(([sub, amount]) => ({ subcategory: sub as CostSubcategory, amount }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 3);
+
+    if (costLimit && costLimit > 0) {
+      checkBudgetThresholds(totalCost, costLimit);
+      checkMonthlyPlanSurpassed(totalCost, costLimit);
+    }
+
+    return {
+      totalIncome: totalInc,
+      totalCosts: totalCost,
+      netProfitLoss: totalInc - totalCost,
+      costLimit,
+      savingsGoal,
+      costVariance: costLimit !== null ? costLimit - totalCost : null,
+      basicCost,
+      fancyCost,
+      extraCost,
+      topSubcategories,
+      filteredCosts,
+      rawCosts: costs,
+    };
+  }, [rawData, categoryFilter, subcategoryFilter, timeframe, refYear, refMonth]);
 
   const savingsProgressPct = useMemo(() => {
     if (!dashboardData || !dashboardData.savingsGoal || dashboardData.savingsGoal <= 0) return 0;
@@ -367,15 +444,21 @@ export function DashboardScreen() {
           .lte("date", endIso),
       ]);
 
+      const filteredReportCosts = (fetchedCosts || []).filter((c: any) => {
+        if (categoryFilter !== "all" && c.category !== categoryFilter) return false;
+        if (subcategoryFilter !== "all" && c.subcategory !== subcategoryFilter) return false;
+        return true;
+      });
+
       const recentTxList = [
-        ...(fetchedCosts || []).map((c: any) => ({
+        ...filteredReportCosts.map((c: any) => ({
           date: c.date,
           type: "cost" as const,
           category: COST_CATEGORY_LABELS[c.category as CostCategory] || c.category,
           description: c.description || COST_SUBCATEGORY_LABELS[c.subcategory as CostSubcategory] || c.subcategory || "-",
           amount: Number(c.amount),
         })),
-        ...(fetchedIncomes || []).map((i: any) => ({
+        ...(analyticsFilter !== "costs" ? (fetchedIncomes || []) : []).map((i: any) => ({
           date: i.date,
           type: "income" as const,
           category: INCOME_SOURCE_TYPE_LABELS[i.source_type as IncomeSourceType] || i.source_type,
@@ -594,6 +677,121 @@ export function DashboardScreen() {
         ))}
       </View>
 
+      {/* Category and Subcategory Filter Section (Collapsible) */}
+      {analyticsFilter !== "incomes" && (
+        <Card style={styles.expenseFilterCard}>
+          <TouchableOpacity
+            style={styles.expenseFilterHeader}
+            onPress={() => setIsFilterOpen(!isFilterOpen)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.expenseFilterHeaderLeft}>
+              <Filter size={15} color={theme.primary} />
+              <Text style={[styles.expenseFilterTitle, { color: theme.textPrimary }]}>
+                Filter Expenses
+              </Text>
+              {(categoryFilter !== "all" || subcategoryFilter !== "all") && (
+                <View style={[styles.activeFilterDot, { backgroundColor: theme.primary }]} />
+              )}
+            </View>
+
+            <View style={styles.expenseFilterHeaderRight}>
+              {(categoryFilter !== "all" || subcategoryFilter !== "all") && (
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    setCategoryFilter("all");
+                    setSubcategoryFilter("all");
+                  }}
+                  style={[styles.clearFilterBtn, { backgroundColor: theme.primaryLight }]}
+                  activeOpacity={0.7}
+                >
+                  <X size={12} color={theme.primary} />
+                  <Text style={[styles.clearFilterText, { color: theme.primary }]}>Reset</Text>
+                </TouchableOpacity>
+              )}
+              {isFilterOpen ? (
+                <ChevronUp size={18} color={theme.primary} />
+              ) : (
+                <ChevronDown size={18} color={theme.primary} />
+              )}
+            </View>
+          </TouchableOpacity>
+
+          {/* Expanded Filter Body */}
+          {isFilterOpen && (
+            <View style={[styles.expenseFilterBody, { borderTopColor: theme.cardBorder }]}>
+              <View style={styles.filterPickersCol}>
+                <SelectPicker
+                  label="Category"
+                  options={categoryFilterOptions}
+                  selectedValue={categoryFilter}
+                  onValueChange={handleCategoryFilterChange}
+                />
+
+                <SelectPicker
+                  label="Subcategory"
+                  options={subcategoryFilterOptions}
+                  selectedValue={subcategoryFilter}
+                  onValueChange={handleSubcategoryFilterChange}
+                />
+              </View>
+
+              {(categoryFilter !== "all" || subcategoryFilter !== "all") && (
+                <View style={styles.activeFilterChipsRow}>
+                  <Text style={[styles.activeFilterLabel, { color: theme.textMuted }]}>Active:</Text>
+                  {categoryFilter !== "all" && (
+                    <View style={[styles.activeChip, { backgroundColor: theme.primaryLight }]}>
+                      <Text style={[styles.activeChipText, { color: theme.primary }]}>
+                        {COST_CATEGORY_LABELS[categoryFilter as CostCategory]}
+                      </Text>
+                    </View>
+                  )}
+                  {subcategoryFilter !== "all" && (
+                    <View style={[styles.activeChip, { backgroundColor: theme.primaryLight }]}>
+                      <Text style={[styles.activeChipText, { color: theme.primary }]}>
+                        {COST_SUBCATEGORY_LABELS[subcategoryFilter as CostSubcategory] || subcategoryFilter}
+                      </Text>
+                    </View>
+                  )}
+                  {dashboardData && (
+                    <Text style={[styles.filterCountText, { color: theme.textMuted }]}>
+                      ({dashboardData.filteredCosts.length} items)
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Collapsed summary when filters are active */}
+          {!isFilterOpen && (categoryFilter !== "all" || subcategoryFilter !== "all") && (
+            <View style={[styles.collapsedActiveRow, { borderTopColor: theme.cardBorder }]}>
+              <Text style={[styles.activeFilterLabel, { color: theme.textMuted }]}>Filtered by:</Text>
+              {categoryFilter !== "all" && (
+                <View style={[styles.activeChip, { backgroundColor: theme.primaryLight }]}>
+                  <Text style={[styles.activeChipText, { color: theme.primary }]}>
+                    {COST_CATEGORY_LABELS[categoryFilter as CostCategory]}
+                  </Text>
+                </View>
+              )}
+              {subcategoryFilter !== "all" && (
+                <View style={[styles.activeChip, { backgroundColor: theme.primaryLight }]}>
+                  <Text style={[styles.activeChipText, { color: theme.primary }]}>
+                    {COST_SUBCATEGORY_LABELS[subcategoryFilter as CostSubcategory] || subcategoryFilter}
+                  </Text>
+                </View>
+              )}
+              {dashboardData && (
+                <Text style={[styles.filterCountText, { color: theme.textMuted }]}>
+                  ({dashboardData.filteredCosts.length} items)
+                </Text>
+              )}
+            </View>
+          )}
+        </Card>
+      )}
+
       {isLoading ? (
         <View style={{ gap: 12, marginVertical: 8 }}>
           <DashboardCardsSkeleton />
@@ -616,7 +814,14 @@ export function DashboardScreen() {
 
             {(analyticsFilter === "all" || analyticsFilter === "costs") && (
               <Card style={styles.cardHalf}>
-                <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Total Costs</Text>
+                <View style={styles.cardHeaderSmall}>
+                  <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Total Costs</Text>
+                  {(categoryFilter !== "all" || subcategoryFilter !== "all") && (
+                    <Text style={[styles.filteredIndicator, { color: theme.primary }]} numberOfLines={1}>
+                      Filtered
+                    </Text>
+                  )}
+                </View>
                 <Text style={[styles.cardValue, { color: theme.textPrimary }]}>
                   {showBalances ? formatCurrency(dashboardData?.totalCosts || 0) : "ETB ••••••"}
                 </Text>
@@ -723,6 +928,8 @@ export function DashboardScreen() {
             <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
               {analyticsFilter === "incomes"
                 ? "Income vs Net Ratio"
+                : categoryFilter !== "all"
+                ? `${COST_CATEGORY_LABELS[categoryFilter as CostCategory]} Subcategories`
                 : analyticsFilter === "costs"
                 ? "Costs Category Breakdown"
                 : "Category Expense Proportions"}
@@ -735,6 +942,22 @@ export function DashboardScreen() {
                     { label: "Costs", value: dashboardData?.totalCosts || 0, color: "#f59e0b" },
                     { label: "Net Savings", value: Math.max(dashboardData?.netProfitLoss || 0, 0), color: "#3b82f6" },
                   ]}
+                  showBalances={showBalances}
+                />
+              ) : categoryFilter !== "all" ? (
+                <SimplePieChart
+                  data={
+                    dashboardData?.topSubcategories && dashboardData.topSubcategories.length > 0
+                      ? dashboardData.topSubcategories.map((item, idx) => {
+                          const colors = [theme.primary, "#f59e0b", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6"];
+                          return {
+                            label: COST_SUBCATEGORY_LABELS[item.subcategory] || item.subcategory,
+                            value: item.amount,
+                            color: colors[idx % colors.length],
+                          };
+                        })
+                      : [{ label: "No Costs", value: 0, color: theme.textMuted }]
+                  }
                   showBalances={showBalances}
                 />
               ) : (
@@ -755,6 +978,8 @@ export function DashboardScreen() {
             <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
               {analyticsFilter === "incomes"
                 ? "Income & Savings Trends"
+                : categoryFilter !== "all"
+                ? `${COST_CATEGORY_LABELS[categoryFilter as CostCategory]} Expenses`
                 : analyticsFilter === "costs"
                 ? "Expenses Breakdown"
                 : "Income vs Expense Overview"}
@@ -766,6 +991,19 @@ export function DashboardScreen() {
                     { label: "Total Income", valueA: dashboardData?.totalIncome || 0 },
                     { label: "Net Profit", valueA: Math.max(dashboardData?.netProfitLoss || 0, 0) },
                   ]}
+                  height={150}
+                  colorA={theme.primary}
+                />
+              ) : categoryFilter !== "all" ? (
+                <SimpleBarChart
+                  data={
+                    dashboardData?.topSubcategories && dashboardData.topSubcategories.length > 0
+                      ? dashboardData.topSubcategories.map((item) => ({
+                          label: COST_SUBCATEGORY_LABELS[item.subcategory] || item.subcategory,
+                          valueA: item.amount,
+                        }))
+                      : [{ label: "No Costs", valueA: 0 }]
+                  }
                   height={150}
                   colorA={theme.primary}
                 />
@@ -802,11 +1040,22 @@ export function DashboardScreen() {
           <View style={styles.offscreenCapture} pointerEvents="none">
             <View ref={categoryPieCaptureRef} collapsable={false} style={{ backgroundColor: "#ffffff" }}>
               <SimplePieChart
-                data={[
-                  { label: "Basic", value: dashboardData?.basicCost || 0, color: theme.primary },
-                  { label: "Fancy", value: dashboardData?.fancyCost || 0, color: "#f59e0b" },
-                  { label: "Extra", value: dashboardData?.extraCost || 0, color: "#3b82f6" },
-                ]}
+                data={
+                  categoryFilter !== "all" && dashboardData?.topSubcategories && dashboardData.topSubcategories.length > 0
+                    ? dashboardData.topSubcategories.map((item, idx) => {
+                        const colors = ["#10b981", "#f59e0b", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6"];
+                        return {
+                          label: COST_SUBCATEGORY_LABELS[item.subcategory] || item.subcategory,
+                          value: item.amount,
+                          color: colors[idx % colors.length],
+                        };
+                      })
+                    : [
+                        { label: "Basic", value: dashboardData?.basicCost || 0, color: theme.primary },
+                        { label: "Fancy", value: dashboardData?.fancyCost || 0, color: "#f59e0b" },
+                        { label: "Extra", value: dashboardData?.extraCost || 0, color: "#3b82f6" },
+                      ]
+                }
                 showBalances={showBalances}
                 forceLightMode
               />
@@ -1033,7 +1282,7 @@ export function DashboardScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  container: { padding: 16, paddingBottom: 100 },
+  container: { padding: 16, paddingBottom: 125 },
   // Rendered off-screen (not visible, doesn't affect layout) purely so react-native-view-shot
   // has a real mounted view to capture for the PDF report. Deliberately NOT using opacity: 0
   // to hide it - combined with an off-screen position that alone made captureRef return a
@@ -1173,5 +1422,97 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 10,
     zIndex: 100,
+  },
+  expenseFilterCard: {
+    padding: 0,
+    overflow: "hidden",
+    marginBottom: 16,
+  },
+  expenseFilterHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 14,
+  },
+  expenseFilterHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  expenseFilterHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  activeFilterDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  expenseFilterTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  expenseFilterBody: {
+    padding: 14,
+    borderTopWidth: 1,
+  },
+  collapsedActiveRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+  },
+  clearFilterBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+  },
+  clearFilterText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  filterPickersCol: {
+    gap: 2,
+  },
+  activeFilterChipsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 4,
+  },
+  activeFilterLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  activeChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  activeChipText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  filterCountText: {
+    fontSize: 11,
+    fontWeight: "500",
+  },
+  cardHeaderSmall: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  filteredIndicator: {
+    fontSize: 9,
+    fontWeight: "700",
+    textTransform: "uppercase",
   },
 });

@@ -286,7 +286,7 @@ export function PlansScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  container: { padding: 16, paddingBottom: 100 },
+  container: { padding: 16, paddingBottom: 125 },
   title: { fontSize: 20, fontWeight: "800", marginBottom: 14 },
   yearNavCard: {
     flexDirection: "row",

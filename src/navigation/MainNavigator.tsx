@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Platform, NativeModules, AppState } from "react-native";
+import Svg, { Defs, LinearGradient, Stop, Rect } from "react-native-svg";
 import { Home, TrendingUp, Receipt, Target, User } from "lucide-react-native";
 import { useTheme } from "../context/ThemeContext";
 import { DashboardScreen } from "../screens/DashboardScreen";
@@ -92,6 +93,21 @@ export function MainNavigator() {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.screenContainer}>{renderScreen()}</View>
 
+      {/* Bottom Section Frosted Gradient Scrim (Soft Blur Effect) */}
+      <View style={styles.bottomDockBackdrop} pointerEvents="none">
+        <Svg height="100%" width="100%" style={StyleSheet.absoluteFill}>
+          <Defs>
+            <LinearGradient id="dockGradient" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={theme.background} stopOpacity="0" />
+              <Stop offset="0.3" stopColor={theme.background} stopOpacity="0.22" />
+              <Stop offset="0.65" stopColor={theme.background} stopOpacity="0.5" />
+              <Stop offset="1" stopColor={theme.background} stopOpacity="0.7" />
+            </LinearGradient>
+          </Defs>
+          <Rect x="0" y="0" width="100%" height="100%" fill="url(#dockGradient)" />
+        </Svg>
+      </View>
+
       {/* Floating Translucent Bottom Nav Bar */}
       <View style={styles.floatingNavWrapper} pointerEvents="box-none">
         {/* Main 4-Tab Translucent Pill Container */}
@@ -167,9 +183,17 @@ const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
   },
+  bottomDockBackdrop: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: Platform.OS === "ios" ? 104 : 92,
+    zIndex: 90,
+  },
   floatingNavWrapper: {
     position: "absolute",
-    bottom: Platform.OS === "ios" ? 28 : 20,
+    bottom: Platform.OS === "ios" ? 16 : 8,
     left: 16,
     right: 16,
     flexDirection: "row",
@@ -196,7 +220,7 @@ const styles = StyleSheet.create({
   tabButton: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 6,
+    paddingVertical: 5,
     paddingHorizontal: 8,
   },
   tabLabel: {

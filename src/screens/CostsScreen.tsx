@@ -251,7 +251,7 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  container: { padding: 16, paddingBottom: 100 },
+  container: { padding: 16, paddingBottom: 125 },
   title: { fontSize: 20, fontWeight: "800", marginBottom: 14 },
   formCard: { padding: 16, marginBottom: 20 },
   formTitle: { fontSize: 16, fontWeight: "700", marginBottom: 14 },

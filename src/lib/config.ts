@@ -1,9 +1,12 @@
-import { Platform } from "react-native";
+import { API_BASE_URL as ENV_API_URL } from "@env";
 
 /**
- * Returns the backend API base URL for mobile requests on physical devices & emulators.
- * 192.168.10.39 is your development computer's exact LAN IP address on Wi-Fi.
+ * Returns the backend API base URL for mobile requests.
+ * Production URL: https://mc-tracker-bdm0.onrender.com
  */
 export function getApiBaseUrl(): string {
-  return "http://192.168.10.39:3000";
+  return ENV_API_URL || "https://mc-tracker-bdm0.onrender.com";
 }
+
+export const API_BASE_URL = getApiBaseUrl();
+

@@ -2,12 +2,12 @@
 node_modules/
 .pnpm-store/
 
-# Expo
+# Expo / Web builds
 .expo/
 dist/
 web-build/
 
-# Native builds
+# Native Android / iOS builds
 android/.gradle/
 android/app/build/
 android/build/
@@ -19,17 +19,26 @@ ios/build/
 *.xcworkspace
 *.pbxproj
 
-# Environment variables
+# Environment & Secret files
 .env
-.env*.local
+.env*
+*.env*
+**/.env*
+*.keystore
+*.jks
+*.p8
+*.p12
+*.mobileprovision
 
 # Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+*.log
 
-# System files
+# System files & tooling
 .DS_Store
 Thumbs.db
-*.log
+.idea/
+.vscode/
