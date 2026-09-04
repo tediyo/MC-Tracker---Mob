@@ -50,7 +50,7 @@ export function HistoryScreen({ initialTab, onBack }: HistoryScreenProps) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  container: { padding: 16, paddingBottom: 100 },
+  container: { padding: 16, paddingBottom: 125 },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 },
   backBtn: { padding: 2 },
   title: { fontSize: 20, fontWeight: "800" },
