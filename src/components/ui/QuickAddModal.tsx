@@ -22,7 +22,7 @@ import {
 } from "../../shared-types";
 import { supabase } from "../../lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
-import { checkBudgetThresholds, syncDailyNotificationState } from "../../services/notificationService";
+import { checkBudgetThresholds, syncDailyNotificationState, getLocalDateString } from "../../services/notificationService";
 
 interface QuickAddModalProps {
   visible: boolean;
@@ -43,13 +43,13 @@ export function QuickAddModal({ visible, onClose }: QuickAddModalProps) {
   const [costSubcategory, setCostSubcategory] = useState<CostSubcategory>("rent");
   const [costAmount, setCostAmount] = useState("");
   const [costDescription, setCostDescription] = useState("");
-  const [costDate, setCostDate] = useState(new Date().toISOString().slice(0, 10));
+  const [costDate, setCostDate] = useState(getLocalDateString());
 
   // Income Form State
   const [incomeSource, setIncomeSource] = useState<IncomeSourceType>("monthly");
   const [incomeAmount, setIncomeAmount] = useState("");
   const [incomeDescription, setIncomeDescription] = useState("");
-  const [incomeDate, setIncomeDate] = useState(new Date().toISOString().slice(0, 10));
+  const [incomeDate, setIncomeDate] = useState(getLocalDateString());
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 

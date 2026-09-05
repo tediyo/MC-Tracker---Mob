@@ -25,6 +25,11 @@ export function MainNavigator() {
   const [historySource, setHistorySource] = useState<HistoryTab>("income");
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
 
+  // Always reset navigation to Dashboard whenever a user logs in, logs out, or switches accounts
+  useEffect(() => {
+    setActiveTab("dashboard");
+  }, [session?.user?.id]);
+
   const isDark = themeMode === "dark";
 
   const checkQuickAddIntent = useCallback(() => {
