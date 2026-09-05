@@ -22,6 +22,7 @@ import { ListFeedSkeleton } from "../components/ui/Skeleton";
 import { formatCurrency, formatDateByMode } from "../lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
+import { syncDailyNotificationState, getLocalDateString } from "../services/notificationService";
 
 const RECENT_COUNT = 5;
 
@@ -39,7 +40,7 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
 
   // Form state
   const [amount, setAmount] = useState("");
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = getLocalDateString();
   const [date, setDate] = useState(todayIso);
   const [category, setCategory] = useState<CostCategory>("basic");
   const [subcategory, setSubcategory] = useState<CostSubcategory>("food");
@@ -119,6 +120,7 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
       setDescriptionError("");
       queryClient.invalidateQueries({ queryKey: ["mobile-costs"] });
       queryClient.invalidateQueries({ queryKey: ["mobile-dashboard"] });
+      syncDailyNotificationState(userId);
     } catch (err: any) {
       showAlert("Error", err.message || "Failed to log cost");
     } finally {

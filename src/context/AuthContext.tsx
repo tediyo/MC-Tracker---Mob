@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
+import { syncDailyNotificationState } from "../services/notificationService";
 
 interface AuthContextType {
   session: Session | null;
@@ -41,10 +42,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+      if (session?.user?.id) {
+        syncDailyNotificationState(session.user.id);
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (user?.id) {
+      syncDailyNotificationState(user.id);
+    }
+  }, [user?.id]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
