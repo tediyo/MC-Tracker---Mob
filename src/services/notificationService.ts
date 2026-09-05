@@ -226,8 +226,8 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean, hasLogge
       }
     }
 
-    // 2. Handle Yesterday's Unlogged Alerts: Every 2 Hours starting from 2:00 AM (2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22:00)
-    const YESTERDAY_2H_SLOTS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22];
+    // 2. Handle Yesterday's Unlogged Alerts: Every 2 Hours starting from 2:00 AM (2, 4, 6, 8, 9, 10, 12, 14, 16, 18, 20, 22:00)
+    const YESTERDAY_2H_SLOTS = [2, 4, 6, 8, 9, 10, 12, 14, 16, 18, 20, 22];
 
     if (hasLoggedYesterday) {
       for (const h of YESTERDAY_2H_SLOTS) {
@@ -237,7 +237,7 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean, hasLogge
       await notifee.cancelNotification(ID_YESTERDAY_2H);
       console.log("[Notification] Yesterday's costs logged! Cancelled all 2-hour yesterday reminders.");
     } else {
-      console.log("[Notification] Yesterday's costs NOT logged! Scheduling 2-hour interval repeating reminders (2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22:00).");
+      console.log("[Notification] Yesterday's costs NOT logged! Scheduling 2-hour interval repeating reminders (2, 4, 6, 8, 9, 10, 12, 14, 16, 18, 20, 22:00).");
 
       for (const h of YESTERDAY_2H_SLOTS) {
         const slotTime = new Date();
