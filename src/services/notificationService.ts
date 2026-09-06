@@ -232,9 +232,17 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean, hasLogge
     if (hasLoggedYesterday) {
       for (const h of YESTERDAY_2H_SLOTS) {
         await notifee.cancelNotification(`reminder_yesterday_${h}h`);
+        try {
+          await notifee.cancelDisplayedNotification(`reminder_yesterday_${h}h`);
+        } catch {}
       }
       await notifee.cancelNotification(ID_YESTERDAY_8PM);
       await notifee.cancelNotification(ID_YESTERDAY_2H);
+      try {
+        await notifee.cancelDisplayedNotification(ID_YESTERDAY_8PM);
+        await notifee.cancelDisplayedNotification(ID_YESTERDAY_2H);
+        await notifee.cancelDisplayedNotification("yesterday_unlogged");
+      } catch {}
       console.log("[Notification] Yesterday's costs logged! Cancelled all 2-hour yesterday reminders.");
     } else {
       console.log("[Notification] Yesterday's costs NOT logged! Scheduling 2-hour interval repeating reminders (2, 4, 6, 8, 9, 10, 12, 14, 16, 18, 20, 22:00).");
@@ -256,14 +264,6 @@ export async function updateDailyCostReminders(hasLoggedToday: boolean, hasLogge
           RepeatFrequency.DAILY
         );
       }
-
-      // Display the checkpoint notification immediately so user is notified on login / app start
-      await displayNotification(
-        "Log Yesterday's Costs",
-        "Please log yesterday's costs to keep your budget on track!",
-        { type: "yesterday_unlogged" }
-      );
-      console.log("[Notification] Displayed immediate 'Log Yesterday's Costs' checkpoint notification.");
     }
   } catch (error) {
     console.error("[Notification] Failed to schedule daily reminders:", error);
@@ -359,7 +359,62 @@ export async function scheduleNewMonthWelcomingNotification(preferredMode?: "eth
  */
 const monthlySurpassedNotified = new Set<string>();
 
-export async function checkMonthlyPlanSurpassed(totalCosts: number, monthlyCostLimit: number) {
+async function dispatchBudgetSurpassedEmail(
+  totalCosts: number,
+  monthlyCostLimit: number,
+  userEmail?: string,
+  userId?: string
+) {
+  try {
+    let email = userEmail;
+    let uid = userId;
+    if (!email || !uid) {
+      const { data } = await supabase.auth.getUser();
+      if (data?.user) {
+        email = email || data.user.email;
+        uid = uid || data.user.id;
+      }
+    }
+
+    const apiBase = "https://mc-tracker-bdm0.onrender.com";
+
+    // 1. Notify Backend API to check and dispatch over-budget email via MailService
+    if (uid) {
+      fetch(`${apiBase}/webhooks/notify-surpassed`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: uid }),
+      }).catch((err) => {
+        console.warn("[Notification] notify-surpassed call warning:", err);
+      });
+    }
+
+    // 2. Also dispatch to web alerts endpoint as a direct fallback
+    if (email) {
+      fetch(`${apiBase}/api/alerts/budget-warning`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          threshold: 100,
+          spent: totalCosts,
+          limit: monthlyCostLimit,
+        }),
+      }).catch((err) => {
+        console.warn("[Notification] budget-warning fallback warning:", err);
+      });
+    }
+  } catch (err) {
+    console.error("[Notification] dispatchBudgetSurpassedEmail error:", err);
+  }
+}
+
+export async function checkMonthlyPlanSurpassed(
+  totalCosts: number,
+  monthlyCostLimit: number,
+  userEmail?: string,
+  userId?: string
+) {
   if (!monthlyCostLimit || monthlyCostLimit <= 0) return;
 
   const currentMonthKey = new Date().toISOString().slice(0, 7); // YYYY-MM
@@ -372,6 +427,11 @@ export async function checkMonthlyPlanSurpassed(totalCosts: number, monthlyCostL
     const body = `You have surpassed your monthly budget plan! Total spent: ETB ${totalCosts.toFixed(2)} of ETB ${monthlyCostLimit.toFixed(2)}.`;
 
     await displayNotification(title, body, { type: "monthly_plan_surpassed" });
+
+    // Also dispatch email alert so user receives the email in real-time
+    dispatchBudgetSurpassedEmail(totalCosts, monthlyCostLimit, userEmail, userId).catch((err) => {
+      console.warn("[Notification] Could not dispatch plan surpassed email:", err);
+    });
   } else if (totalCosts >= monthlyCostLimit * 0.8 && totalCosts <= monthlyCostLimit && !monthlySurpassedNotified.has(`80_${key}`)) {
     monthlySurpassedNotified.add(`80_${key}`);
 
@@ -385,8 +445,13 @@ export async function checkMonthlyPlanSurpassed(totalCosts: number, monthlyCostL
 /**
  * Backwards-compatible alias for budget threshold checks
  */
-export async function checkBudgetThresholds(totalCosts: number, monthlyCostLimit: number) {
-  return checkMonthlyPlanSurpassed(totalCosts, monthlyCostLimit);
+export async function checkBudgetThresholds(
+  totalCosts: number,
+  monthlyCostLimit: number,
+  userEmail?: string,
+  userId?: string
+) {
+  return checkMonthlyPlanSurpassed(totalCosts, monthlyCostLimit, userEmail, userId);
 }
 
 /**
@@ -406,7 +471,7 @@ export async function syncDailyNotificationState(userId?: string) {
 
       console.log(`[Notification] Syncing daily state for user ${userId}: todayIso=${todayIso}, yesterdayIso=${yesterdayIso}`);
 
-      const [todayRes, yesterdayRes] = await Promise.all([
+      const [todayRes, yesterdayRes, priorCostsRes, priorIncomesRes] = await Promise.all([
         supabase
           .from("costs")
           .select("id")
@@ -419,11 +484,37 @@ export async function syncDailyNotificationState(userId?: string) {
           .eq("user_id", userId)
           .eq("date", yesterdayIso)
           .limit(1),
+        supabase
+          .from("costs")
+          .select("id")
+          .eq("user_id", userId)
+          .lt("date", todayIso)
+          .limit(1),
+        supabase
+          .from("incomes")
+          .select("id")
+          .eq("user_id", userId)
+          .lt("date", todayIso)
+          .limit(1),
       ]);
 
       hasLoggedToday = !!(todayRes.data && todayRes.data.length > 0);
-      hasLoggedYesterday = !!(yesterdayRes.data && yesterdayRes.data.length > 0);
-      console.log(`[Notification] Query results: hasLoggedToday=${hasLoggedToday}, hasLoggedYesterday=${hasLoggedYesterday}`);
+
+      const hasPriorLogging = !!(
+        (priorCostsRes.data && priorCostsRes.data.length > 0) ||
+        (priorIncomesRes.data && priorIncomesRes.data.length > 0)
+      );
+
+      if (!hasPriorLogging) {
+        // If the user has never logged any costs or incomes prior to today, they just created their account
+        // or haven't started tracking expenses yet. Suppress yesterday reminders.
+        hasLoggedYesterday = true;
+        console.log("[Notification] User has no prior logging before today (new account). Suppressing yesterday reminder.");
+      } else {
+        hasLoggedYesterday = !!(yesterdayRes.data && yesterdayRes.data.length > 0);
+      }
+
+      console.log(`[Notification] Query results: hasLoggedToday=${hasLoggedToday}, hasLoggedYesterday=${hasLoggedYesterday}, hasPriorLogging=${hasPriorLogging}`);
     }
 
     await updateDailyCostReminders(hasLoggedToday, hasLoggedYesterday);
