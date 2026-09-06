@@ -96,7 +96,7 @@ export function getEthiopianDate(gregorianInput: Date | string): EthiopianDate {
 
   const jdn = gregorianToJdn(gy, gm, gd);
   const r = jdn - 1724220;
-  const ethYear = Math.floor((4 * r + 1463) / 1461);
+  const ethYear = Math.floor((4 * r + 1459) / 1461);
 
   const jdnStart = 1724220 + 365 * (ethYear - 1) + Math.floor(ethYear / 4);
   const dInYear = jdn - jdnStart;

@@ -123,6 +123,7 @@ export function PlansScreen() {
           .update({
             target_cost_limit: limit,
             target_savings_goal: goal,
+            over_budget_alert_sent_at: null,
           })
           .eq("id", existing.id);
         if (error) throw error;
@@ -141,6 +142,15 @@ export function PlansScreen() {
       setActiveMonth(null);
       queryClient.invalidateQueries({ queryKey: ["mobile-plans"] });
       queryClient.invalidateQueries({ queryKey: ["mobile-dashboard"] });
+
+      // Trigger backend check if updated plan is already exceeded or needs evaluation
+      if (userId) {
+        fetch("https://mc-tracker-bdm0.onrender.com/webhooks/notify-surpassed", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId }),
+        }).catch(() => {});
+      }
     } catch (err: any) {
       showAlert("Error", err.message || "Failed to save plan");
     } finally {

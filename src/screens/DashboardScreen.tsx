@@ -303,8 +303,7 @@ export function DashboardScreen() {
       .slice(0, 3);
 
     if (costLimit && costLimit > 0) {
-      checkBudgetThresholds(totalCost, costLimit);
-      checkMonthlyPlanSurpassed(totalCost, costLimit);
+      checkMonthlyPlanSurpassed(totalCost, costLimit, user?.email, userId);
     }
 
     return {
