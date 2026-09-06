@@ -25,7 +25,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     supabase.auth
       .getSession()
-      .then(({ data: { session } }) => {
+      .then(async ({ data: { session } }) => {
+        if (session) {
+          // Verify with Supabase server that user still exists (not deleted from backend)
+          const { data, error } = await supabase.auth.getUser();
+          if (error || !data?.user) {
+            console.log("[Auth] User no longer exists on server, logging out...");
+            await supabase.auth.signOut();
+            setSession(null);
+            setUser(null);
+            return;
+          }
+        }
         setSession(session);
         setUser(session?.user ?? null);
       })
