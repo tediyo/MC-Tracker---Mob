@@ -17,7 +17,12 @@ import type { TimeFrame } from "./period";
 import { WEEK_STARTS_ON } from "./period";
 import { parseISOCached } from "./aggregate";
 import type { IncomeRow, CostRow, PlanRow } from "../db";
-import { getEthiopianDate } from "../ethiopian-calendar";
+import {
+  getEthiopianDate,
+  getDaysInEthiopianMonth,
+  toGregorianDate,
+  ETHIOPIAN_MONTHS,
+} from "../ethiopian-calendar";
 
 export interface TrendPoint {
   bucketLabel: string;
@@ -83,26 +88,6 @@ function labelFor(timeframe: TimeFrame, start: Date): string {
 
 /**
  * Builds the bucketed series behind the income/expense trend chart.
- *
- * Performance note: instead of calling `sumIncome(allRows, bucketBounds)` and
- * `sumCosts(allRows, bucketBounds)` once per bucket — which is O(buckets × rows)
- * with a `parseISO` call on every row for every bucket — this implementation:
- *  1. Pre-computes all bucket start/end times once as epoch ms integers.
- *  2. Makes a single forward pass over each row array, assigning each row to
- *     its bucket with O(buckets) integer comparisons and zero date parsing
- *     (via `parseISOCached`; each date string is parsed exactly once across
- *     the whole call regardless of bucket count).
- * Total work: O(rows × buckets) integer comparisons instead of
- * O(rows × buckets) date-string parses — roughly 10–30× faster for the
- * daily (30 bucket) and monthly (12 bucket) timeframes at typical data
- * volumes.
- *
- * Behaviour simplifications (unchanged from before):
- *  - `cumulativeCost` runs across the whole returned window, not reset at
- *    calendar-month boundaries.
- *  - `targetCostLimit` per bucket is the owning month's plan value, unprorated.
- *  - For "monthly", the window is always Jan–Dec of `referenceDate`'s year;
- *    every other timeframe uses a trailing window of `bucketCount` buckets.
  */
 export function buildTrendSeries(
   incomes: readonly IncomeRow[],
@@ -111,30 +96,124 @@ export function buildTrendSeries(
   timeframe: TimeFrame,
   referenceDate: Date,
   bucketCount: number = DEFAULT_BUCKET_COUNT[timeframe],
+  calendarMode: "ethiopian" | "gregorian" = "gregorian",
 ): TrendPoint[] {
-  const anchors: Date[] =
-    timeframe === "monthly"
-      ? Array.from({ length: 12 }, (_, i) => new Date(referenceDate.getFullYear(), i, 1))
-      : Array.from({ length: bucketCount }, (_, i) => stepBack(timeframe, referenceDate, bucketCount - 1 - i));
+  interface BucketDef {
+    start: Date;
+    end: Date;
+    label: string;
+    targetPlan?: PlanRow;
+  }
+
+  let buckets: BucketDef[];
+
+  if (calendarMode === "ethiopian") {
+    if (timeframe === "monthly") {
+      const eth = getEthiopianDate(referenceDate);
+      const ethYear = eth.year;
+      buckets = Array.from({ length: 13 }, (_, idx) => {
+        const monthNum = idx + 1;
+        const daysInMonth = getDaysInEthiopianMonth(ethYear, monthNum);
+        const start = startOfDay(toGregorianDate(ethYear, monthNum, 1));
+        const end = endOfDay(toGregorianDate(ethYear, monthNum, daysInMonth));
+        const monthInfo = ETHIOPIAN_MONTHS[idx];
+        const plan = plans.find((p) => p.year === ethYear && p.month === monthNum);
+        return {
+          start,
+          end,
+          label: monthInfo.nameEn,
+          targetPlan: plan,
+        };
+      });
+    } else if (timeframe === "yearly") {
+      const eth = getEthiopianDate(referenceDate);
+      buckets = Array.from({ length: bucketCount }, (_, idx) => {
+        const yr = eth.year - (bucketCount - 1 - idx);
+        const start = startOfDay(toGregorianDate(yr, 1, 1));
+        const daysInPagume = getDaysInEthiopianMonth(yr, 13);
+        const end = endOfDay(toGregorianDate(yr, 13, daysInPagume));
+        const plansThisYr = plans.filter((p) => p.year === yr);
+        const totalPlan =
+          plansThisYr.length > 0
+            ? plansThisYr.reduce((sum, p) => sum + Number(p.target_cost_limit), 0)
+            : null;
+        return {
+          start,
+          end,
+          label: `${yr} E.C.`,
+          targetPlan: totalPlan !== null ? ({ target_cost_limit: totalPlan } as PlanRow) : undefined,
+        };
+      });
+    } else if (timeframe === "daily") {
+      buckets = Array.from({ length: bucketCount }, (_, idx) => {
+        const d = subDays(referenceDate, bucketCount - 1 - idx);
+        const start = startOfDay(d);
+        const end = endOfDay(d);
+        const ethDate = getEthiopianDate(d);
+        const mInfo = ETHIOPIAN_MONTHS.find((m) => m.number === ethDate.month);
+        const plan = plans.find((p) => p.year === ethDate.year && p.month === ethDate.month);
+        return {
+          start,
+          end,
+          label: `${mInfo?.nameEn || ""} ${ethDate.day}`,
+          targetPlan: plan,
+        };
+      });
+    } else {
+      // weekly
+      buckets = Array.from({ length: bucketCount }, (_, idx) => {
+        const anchor = subWeeks(referenceDate, bucketCount - 1 - idx);
+        const start = startOfWeek(anchor, { weekStartsOn: WEEK_STARTS_ON });
+        const end = endOfWeek(anchor, { weekStartsOn: WEEK_STARTS_ON });
+        const ethDate = getEthiopianDate(start);
+        const mInfo = ETHIOPIAN_MONTHS.find((m) => m.number === ethDate.month);
+        const plan = plans.find((p) => p.year === ethDate.year && p.month === ethDate.month);
+        return {
+          start,
+          end,
+          label: `Wk of ${mInfo?.nameEn || ""} ${ethDate.day}`,
+          targetPlan: plan,
+        };
+      });
+    }
+  } else {
+    // Gregorian calendar mode
+    const anchors: Date[] =
+      timeframe === "monthly"
+        ? Array.from({ length: 12 }, (_, i) => new Date(referenceDate.getFullYear(), i, 1))
+        : Array.from({ length: bucketCount }, (_, i) => stepBack(timeframe, referenceDate, bucketCount - 1 - i));
+
+    buckets = anchors.map((anchorDate) => {
+      const { start, end } = bucketBounds(timeframe, anchorDate);
+      const planForMonth = (s: Date): PlanRow | undefined => {
+        const pGreg = plans.find((p) => p.year === s.getFullYear() && p.month === s.getMonth() + 1);
+        if (pGreg) return pGreg;
+        const eth = getEthiopianDate(s);
+        return plans.find((p) => p.year === eth.year && p.month === eth.month);
+      };
+      return {
+        start,
+        end,
+        label: labelFor(timeframe, start),
+        targetPlan: planForMonth(start),
+      };
+    });
+  }
 
   // Pre-compute bucket boundaries once as epoch-ms integers so the hot
   // inner loop only does cheap numeric comparisons.
-  const bucketSums = anchors.map((anchorDate) => {
-    const { start, end } = bucketBounds(timeframe, anchorDate);
-    return {
-      start,
-      end,
-      startMs: start.getTime(),
-      endMs: end.getTime(),
-      label: labelFor(timeframe, start),
-      income: 0,
-      cost: 0,
-    };
-  });
+  const bucketSums = buckets.map((b) => ({
+    start: b.start,
+    end: b.end,
+    startMs: b.start.getTime(),
+    endMs: b.end.getTime(),
+    label: b.label,
+    targetPlan: b.targetPlan,
+    income: 0,
+    cost: 0,
+  }));
 
   // Single forward pass over income rows.
-  // `parseISOCached` ensures each date string is parsed at most once across
-  // the entire call (not once per row per bucket).
   for (const row of incomes) {
     const t = parseISOCached(row.date).getTime();
     for (const bucket of bucketSums) {
@@ -156,15 +235,9 @@ export function buildTrendSeries(
     }
   }
 
-  const planForMonth = (start: Date): PlanRow | undefined => {
-    const eth = getEthiopianDate(start);
-    return plans.find((p) => p.year === eth.year && p.month === eth.month);
-  };
-
   let cumulativeCost = 0;
   return bucketSums.map((bucket) => {
     cumulativeCost += bucket.cost;
-    const plan = planForMonth(bucket.start);
     return {
       bucketLabel: bucket.label,
       bucketStart: bucket.start,
@@ -172,7 +245,7 @@ export function buildTrendSeries(
       income: bucket.income,
       cost: bucket.cost,
       cumulativeCost,
-      targetCostLimit: plan ? Number(plan.target_cost_limit) : null,
+      targetCostLimit: bucket.targetPlan ? Number(bucket.targetPlan.target_cost_limit) : null,
     };
   });
 }

@@ -40,6 +40,10 @@ export function capEnd(range: DateRange, _referenceDate?: Date): DateRange {
   if (range.end.getTime() <= now.getTime()) {
     return range;
   }
+  // If the period is entirely in the future, return the full period range
+  if (now.getTime() < range.start.getTime()) {
+    return range;
+  }
   // If we are currently inside this period, cap at endOfDay(now) or range.end
   const cappedEnd = endOfDay(now).getTime() < range.end.getTime() ? endOfDay(now) : range.end;
   return { start: range.start, end: cappedEnd };
@@ -66,7 +70,49 @@ function resolveTarget(
   timeframe: TimeFrame,
   range: PeriodRange,
   referenceDate: Date,
+  calendarMode: "ethiopian" | "gregorian" = "ethiopian",
 ): ResolvedTarget {
+  if (calendarMode === "gregorian") {
+    if (timeframe === "monthly") {
+      const gregYear = referenceDate.getFullYear();
+      const gregMonth = referenceDate.getMonth() + 1;
+      const plan = findPlanForMonth(plans, gregYear, gregMonth) || (() => {
+        const eth = getEthiopianDate(referenceDate);
+        return findPlanForMonth(plans, eth.year, eth.month);
+      })();
+      return plan
+        ? { targetCostLimit: Number(plan.target_cost_limit), targetSavingsGoal: Number(plan.target_savings_goal) }
+        : { targetCostLimit: null, targetSavingsGoal: null };
+    }
+
+    if (timeframe === "daily" || timeframe === "weekly") {
+      const anchor = range.start;
+      const gregYear = anchor.getFullYear();
+      const gregMonth = anchor.getMonth() + 1;
+      const plan = findPlanForMonth(plans, gregYear, gregMonth) || (() => {
+        const eth = getEthiopianDate(anchor);
+        return findPlanForMonth(plans, eth.year, eth.month);
+      })();
+      if (!plan) return { targetCostLimit: null, targetSavingsGoal: null };
+      const daysInMonth = getDaysInMonth(anchor);
+      const multiplier = timeframe === "daily" ? 1 : 7;
+      return {
+        targetCostLimit: (Number(plan.target_cost_limit) / daysInMonth) * multiplier,
+        targetSavingsGoal: (Number(plan.target_savings_goal) / daysInMonth) * multiplier,
+      };
+    }
+
+    // yearly
+    const gregYear = referenceDate.getFullYear();
+    const plansThisYear = plans.filter((p) => p.year === gregYear);
+    if (plansThisYear.length > 0) {
+      return {
+        targetCostLimit: plansThisYear.reduce((sum, p) => sum + Number(p.target_cost_limit), 0),
+        targetSavingsGoal: plansThisYear.reduce((sum, p) => sum + Number(p.target_savings_goal), 0),
+      };
+    }
+  }
+
   if (timeframe === "monthly") {
     const eth = getEthiopianDate(referenceDate);
     const plan = findPlanForMonth(plans, eth.year, eth.month);
@@ -111,8 +157,9 @@ export function calculatePeriodMetrics(
   plans: readonly PlanRow[],
   timeframe: TimeFrame,
   referenceDate: Date,
+  calendarMode: "ethiopian" | "gregorian" = "ethiopian",
 ): PeriodMetrics {
-  const range = getPeriodRange(timeframe, referenceDate);
+  const range = getPeriodRange(timeframe, referenceDate, calendarMode);
   const currentRange = capEnd(range, referenceDate);
   const previousRange: DateRange = { start: range.previousStart, end: range.previousEnd };
 
@@ -124,7 +171,7 @@ export function calculatePeriodMetrics(
   const previousCosts = sumCosts(costs, previousRange);
   const previousNet = previousIncome - previousCosts;
 
-  const { targetCostLimit, targetSavingsGoal } = resolveTarget(plans, timeframe, range, referenceDate);
+  const { targetCostLimit, targetSavingsGoal } = resolveTarget(plans, timeframe, range, referenceDate, calendarMode);
 
   return {
     timeframe,

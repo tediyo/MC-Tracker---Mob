@@ -32,8 +32,10 @@ import {
   COST_SUBCATEGORIES,
   COST_CATEGORY_LABELS,
   COST_SUBCATEGORY_LABELS,
-  CATEGORY_SUBCATEGORY_MAP,
   INCOME_SOURCE_TYPE_LABELS,
+  decodeCostRow,
+  formatCategoryLabel,
+  formatSubcategoryLabel,
   type CostCategory,
   type CostSubcategory,
   type IncomeSourceType,
@@ -43,6 +45,7 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { useCalendar } from "../context/CalendarContext";
 import { useAppAlert } from "../context/AlertContext";
+import { useCategories } from "../context/CategoryContext";
 import { Card } from "../components/ui/Card";
 import { SelectPicker } from "../components/ui/SelectPicker";
 import { EthiopianDatePicker } from "../components/ui/EthiopianDatePicker";
@@ -106,9 +109,11 @@ export function DashboardScreen() {
   const incomeCostPieRef = useRef<View>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
+  const { categories, categoryLabels, categorySubcategoryMap, subcategoryLabels } = useCategories();
+
   const [analyticsFilter, setAnalyticsFilter] = useState<"all" | "incomes" | "costs">("all");
-  const [categoryFilter, setCategoryFilter] = useState<"all" | CostCategory>("all");
-  const [subcategoryFilter, setSubcategoryFilter] = useState<"all" | CostSubcategory>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [subcategoryFilter, setSubcategoryFilter] = useState<string>("all");
   const [isFilterOpen, setIsFilterOpen] = useState<boolean>(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState<boolean>(false);
   const [timeframe, setTimeframe] = useState<TimeFrame>("monthly");
@@ -119,48 +124,52 @@ export function DashboardScreen() {
 
   const availableSubcategories = useMemo(() => {
     if (categoryFilter !== "all") {
-      return CATEGORY_SUBCATEGORY_MAP[categoryFilter as CostCategory] || [];
+      return categorySubcategoryMap[categoryFilter] || ["other"];
     }
-    return COST_SUBCATEGORIES;
-  }, [categoryFilter]);
+    const allSubs = new Set<string>();
+    Object.values(categorySubcategoryMap).forEach((subs) => {
+      subs.forEach((s) => allSubs.add(s));
+    });
+    return Array.from(allSubs);
+  }, [categoryFilter, categorySubcategoryMap]);
 
   const categoryFilterOptions = useMemo(
     () => [
       { label: "All Categories", value: "all" },
-      ...COST_CATEGORIES.map((c) => ({ label: COST_CATEGORY_LABELS[c], value: c })),
+      ...categories.map((c) => ({ label: categoryLabels[c] || formatCategoryLabel(c), value: c })),
     ],
-    [],
+    [categories, categoryLabels],
   );
 
   const subcategoryFilterOptions = useMemo(
     () => [
       { label: "All Subcategories", value: "all" },
       ...availableSubcategories.map((s) => ({
-        label: COST_SUBCATEGORY_LABELS[s as CostSubcategory] || s,
+        label: subcategoryLabels[s] || formatSubcategoryLabel(s),
         value: s,
       })),
     ],
-    [availableSubcategories],
+    [availableSubcategories, subcategoryLabels],
   );
 
   const handleCategoryFilterChange = (val: any) => {
-    const cat = val as "all" | CostCategory;
+    const cat = String(val);
     setCategoryFilter(cat);
     if (cat !== "all") {
-      const validSubs = CATEGORY_SUBCATEGORY_MAP[cat as CostCategory];
-      if (subcategoryFilter !== "all" && !validSubs.includes(subcategoryFilter as CostSubcategory)) {
+      const validSubs = categorySubcategoryMap[cat] || [];
+      if (subcategoryFilter !== "all" && !validSubs.includes(subcategoryFilter)) {
         setSubcategoryFilter("all");
       }
     }
   };
 
   const handleSubcategoryFilterChange = (val: any) => {
-    const sub = val as "all" | CostSubcategory;
+    const sub = String(val);
     setSubcategoryFilter(sub);
     if (sub !== "all" && categoryFilter === "all") {
-      for (const [cat, subs] of Object.entries(CATEGORY_SUBCATEGORY_MAP)) {
-        if (subs.includes(sub as CostSubcategory)) {
-          setCategoryFilter(cat as CostCategory);
+      for (const [cat, subs] of Object.entries(categorySubcategoryMap)) {
+        if (subs.includes(sub)) {
+          setCategoryFilter(cat);
           break;
         }
       }
@@ -251,7 +260,7 @@ export function DashboardScreen() {
 
       return {
         incomes: incomes || [],
-        costs: costs || [],
+        costs: (costs || []).map((c: any) => decodeCostRow(c)),
         plans: plans || [],
       };
     },
@@ -453,8 +462,8 @@ export function DashboardScreen() {
         ...filteredReportCosts.map((c: any) => ({
           date: c.date,
           type: "cost" as const,
-          category: COST_CATEGORY_LABELS[c.category as CostCategory] || c.category,
-          description: c.description || COST_SUBCATEGORY_LABELS[c.subcategory as CostSubcategory] || c.subcategory || "-",
+          category: categoryLabels[c.category] || formatCategoryLabel(c.category),
+          description: c.description || subcategoryLabels[c.subcategory] || formatSubcategoryLabel(c.subcategory) || "-",
           amount: Number(c.amount),
         })),
         ...(analyticsFilter !== "costs" ? (fetchedIncomes || []) : []).map((i: any) => ({
@@ -742,14 +751,14 @@ export function DashboardScreen() {
                   {categoryFilter !== "all" && (
                     <View style={[styles.activeChip, { backgroundColor: theme.primaryLight }]}>
                       <Text style={[styles.activeChipText, { color: theme.primary }]}>
-                        {COST_CATEGORY_LABELS[categoryFilter as CostCategory]}
+                        {categoryLabels[categoryFilter] || formatCategoryLabel(categoryFilter)}
                       </Text>
                     </View>
                   )}
                   {subcategoryFilter !== "all" && (
                     <View style={[styles.activeChip, { backgroundColor: theme.primaryLight }]}>
                       <Text style={[styles.activeChipText, { color: theme.primary }]}>
-                        {COST_SUBCATEGORY_LABELS[subcategoryFilter as CostSubcategory] || subcategoryFilter}
+                        {subcategoryLabels[subcategoryFilter] || formatSubcategoryLabel(subcategoryFilter)}
                       </Text>
                     </View>
                   )}
@@ -928,7 +937,7 @@ export function DashboardScreen() {
               {analyticsFilter === "incomes"
                 ? "Income vs Net Ratio"
                 : categoryFilter !== "all"
-                ? `${COST_CATEGORY_LABELS[categoryFilter as CostCategory]} Subcategories`
+                ? `${categoryLabels[categoryFilter] || formatCategoryLabel(categoryFilter)} Subcategories`
                 : analyticsFilter === "costs"
                 ? "Costs Category Breakdown"
                 : "Category Expense Proportions"}
@@ -978,7 +987,7 @@ export function DashboardScreen() {
               {analyticsFilter === "incomes"
                 ? "Income & Savings Trends"
                 : categoryFilter !== "all"
-                ? `${COST_CATEGORY_LABELS[categoryFilter as CostCategory]} Expenses`
+                ? `${categoryLabels[categoryFilter] || formatCategoryLabel(categoryFilter)} Expenses`
                 : analyticsFilter === "costs"
                 ? "Expenses Breakdown"
                 : "Income vs Expense Overview"}

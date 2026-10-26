@@ -1,46 +1,44 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
-import { Plus, X } from "lucide-react-native";
-import { useTheme } from "../../context/ThemeContext";
-import { useAuth } from "../../context/AuthContext";
-import { useCalendar } from "../../context/CalendarContext";
-import { useAppAlert } from "../../context/AlertContext";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { AppModal } from "./Modal";
 import { Input } from "./Input";
 import { SelectPicker } from "./SelectPicker";
 import { EthiopianDatePicker } from "./EthiopianDatePicker";
+import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "../../context/ThemeContext";
+import { useAppAlert } from "../../context/AlertContext";
+import { useCategories } from "../../context/CategoryContext";
+import { supabase } from "../../lib/supabase";
 import {
-  COST_CATEGORIES,
-  COST_CATEGORY_LABELS,
-  CATEGORY_SUBCATEGORY_MAP,
-  COST_SUBCATEGORY_LABELS,
   INCOME_SOURCE_TYPES,
   INCOME_SOURCE_TYPE_LABELS,
-  type CostCategory,
-  type CostSubcategory,
+  encodeDynamicDescription,
+  formatCategoryLabel,
+  formatSubcategoryLabel,
   type IncomeSourceType,
 } from "../../shared-types";
-import { supabase } from "../../lib/supabase";
-import { useQueryClient } from "@tanstack/react-query";
-import { checkBudgetThresholds, syncDailyNotificationState, getLocalDateString } from "../../services/notificationService";
+import { syncDailyNotificationState, getLocalDateString } from "../../services/notificationService";
 
 interface QuickAddModalProps {
   visible: boolean;
   onClose: () => void;
+  defaultType?: "cost" | "income";
 }
 
-export function QuickAddModal({ visible, onClose }: QuickAddModalProps) {
-  const { theme } = useTheme();
+export function QuickAddModal({ visible, onClose, defaultType = "cost" }: QuickAddModalProps) {
   const { user } = useAuth();
   const userId = user?.id || "";
+  const { theme } = useTheme();
   const { showAlert } = useAppAlert();
+  const { categories, categoryLabels, categorySubcategoryMap, subcategoryLabels } = useCategories();
   const queryClient = useQueryClient();
 
-  const [type, setType] = useState<"cost" | "income">("cost");
+  const [type, setType] = useState<"cost" | "income">(defaultType);
 
   // Cost Form State
-  const [costCategory, setCostCategory] = useState<CostCategory>("basic");
-  const [costSubcategory, setCostSubcategory] = useState<CostSubcategory>("rent");
+  const [costCategory, setCostCategory] = useState<string>("basic");
+  const [costSubcategory, setCostSubcategory] = useState<string>("food");
   const [costAmount, setCostAmount] = useState("");
   const [costDescription, setCostDescription] = useState("");
   const [costDate, setCostDate] = useState(getLocalDateString());
@@ -58,12 +56,14 @@ export function QuickAddModal({ visible, onClose }: QuickAddModalProps) {
   const [costDescError, setCostDescError] = useState("");
   const [incomeAmountError, setIncomeAmountError] = useState("");
 
-  const handleCategoryChange = (cat: CostCategory) => {
+  const handleCategoryChange = (cat: string) => {
     setCostCategory(cat);
     setCostDescError("");
-    const validSubs = CATEGORY_SUBCATEGORY_MAP[cat] || [];
+    const validSubs = categorySubcategoryMap[cat] || ["other"];
     if (validSubs.length > 0) {
       setCostSubcategory(validSubs[0]!);
+    } else {
+      setCostSubcategory("other");
     }
   };
 
@@ -93,14 +93,34 @@ export function QuickAddModal({ visible, onClose }: QuickAddModalProps) {
       try {
         const { error } = await supabase.from("costs").insert({
           user_id: userId,
-          category: costCategory,
-          subcategory: costSubcategory,
+          category: costCategory as any,
+          subcategory: costSubcategory as any,
           amount: numAmount,
           description: costDescription.trim() || null,
           date: costDate,
         });
 
-        if (error) throw error;
+        if (error) {
+          const isConstraintError =
+            error.code === "22P02" ||
+            error.message?.includes("enum") ||
+            error.message?.includes("chk_category_subcategory");
+
+          if (isConstraintError) {
+            const encodedDesc = encodeDynamicDescription(costCategory, costSubcategory, costDescription);
+            const { error: fallbackError } = await supabase.from("costs").insert({
+              user_id: userId,
+              amount: numAmount,
+              date: costDate,
+              category: "basic",
+              subcategory: "other",
+              description: encodedDesc,
+            });
+            if (fallbackError) throw fallbackError;
+          } else {
+            throw error;
+          }
+        }
 
         // Invalidate queries & check budget warnings & sync daily reminders
         queryClient.invalidateQueries({ queryKey: ["mobile-dashboard"] });
@@ -114,9 +134,9 @@ export function QuickAddModal({ visible, onClose }: QuickAddModalProps) {
         setCostAmountError("");
         setCostDescError("");
         onClose();
-        showAlert("Success", "Expense entry added!");
+        showAlert("Success", "Expense logged successfully!");
       } catch (err: any) {
-        showAlert("Error", err.message || "Failed to add expense entry");
+        showAlert("Error", err.message || "Failed to log expense");
       } finally {
         setIsSubmitting(false);
       }
@@ -157,13 +177,13 @@ export function QuickAddModal({ visible, onClose }: QuickAddModalProps) {
     }
   };
 
-  const categoryOptions = COST_CATEGORIES.map((c) => ({
-    label: COST_CATEGORY_LABELS[c],
+  const categoryOptions = categories.map((c) => ({
+    label: categoryLabels[c] || formatCategoryLabel(c),
     value: c,
   }));
 
-  const subcategoryOptions = (CATEGORY_SUBCATEGORY_MAP[costCategory] || []).map((s) => ({
-    label: COST_SUBCATEGORY_LABELS[s] || s,
+  const subcategoryOptions = (categorySubcategoryMap[costCategory] || ["other"]).map((s) => ({
+    label: subcategoryLabels[s] || formatSubcategoryLabel(s),
     value: s,
   }));
 
@@ -178,25 +198,28 @@ export function QuickAddModal({ visible, onClose }: QuickAddModalProps) {
       onClose={onClose}
       title={type === "cost" ? "Quick Add Expense" : "Quick Add Income"}
       onConfirm={handleSave}
-      confirmLabel={type === "cost" ? "Save Expense" : "Save Income"}
+      confirmLabel={type === "cost" ? "Add Expense" : "Add Income"}
       confirmLoading={isSubmitting}
     >
       {/* Type Toggle Pills */}
-      <View style={[styles.typeToggleRow, { backgroundColor: theme.inputBg, borderColor: theme.cardBorder }]}>
+      <View style={[styles.typePillContainer, { backgroundColor: theme.cardBorder + "30" }]}>
         <TouchableOpacity
-          style={[styles.typePill, type === "cost" && { backgroundColor: theme.primary }]}
+          style={[
+            styles.typePill,
+            type === "cost" && [styles.typePillActive, { backgroundColor: "#ef4444" }],
+          ]}
           onPress={() => setType("cost")}
-          activeOpacity={0.8}
         >
           <Text style={[styles.typePillText, { color: type === "cost" ? "#ffffff" : theme.textSecondary }]}>
             + Add Expense
           </Text>
         </TouchableOpacity>
-
         <TouchableOpacity
-          style={[styles.typePill, type === "income" && { backgroundColor: theme.primary }]}
+          style={[
+            styles.typePill,
+            type === "income" && [styles.typePillActive, { backgroundColor: theme.primary }],
+          ]}
           onPress={() => setType("income")}
-          activeOpacity={0.8}
         >
           <Text style={[styles.typePillText, { color: type === "income" ? "#ffffff" : theme.textSecondary }]}>
             + Add Income
@@ -210,13 +233,13 @@ export function QuickAddModal({ visible, onClose }: QuickAddModalProps) {
             label="Category"
             options={categoryOptions}
             selectedValue={costCategory}
-            onValueChange={(val) => handleCategoryChange(val as CostCategory)}
+            onValueChange={(val) => handleCategoryChange(val)}
           />
           <SelectPicker
             label="Subcategory"
             options={subcategoryOptions}
             selectedValue={costSubcategory}
-            onValueChange={(val) => setCostSubcategory(val as CostSubcategory)}
+            onValueChange={(val) => setCostSubcategory(val)}
           />
           <Input
             label="Amount (ETB)"
@@ -265,7 +288,7 @@ export function QuickAddModal({ visible, onClose }: QuickAddModalProps) {
             label="Description (Optional)"
             value={incomeDescription}
             onChangeText={setIncomeDescription}
-            placeholder="Source notes"
+            placeholder="Source details or notes"
           />
         </View>
       )}
@@ -274,24 +297,31 @@ export function QuickAddModal({ visible, onClose }: QuickAddModalProps) {
 }
 
 const styles = StyleSheet.create({
-  typeToggleRow: {
+  typePillContainer: {
     flexDirection: "row",
+    padding: 4,
     borderRadius: 12,
-    borderWidth: 1,
-    padding: 3,
     marginBottom: 16,
   },
   typePill: {
     flex: 1,
     paddingVertical: 8,
+    borderRadius: 10,
     alignItems: "center",
-    borderRadius: 9,
+    justifyContent: "center",
+  },
+  typePillActive: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 2,
   },
   typePillText: {
     fontSize: 13,
     fontWeight: "700",
   },
   formBlock: {
-    gap: 4,
+    gap: 2,
   },
 });

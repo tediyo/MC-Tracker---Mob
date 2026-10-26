@@ -16,6 +16,7 @@ import {
   Receipt,
   Target,
   Radio,
+  FolderPlus,
 } from "lucide-react-native";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
@@ -25,6 +26,7 @@ import { useAppAlert } from "../context/AlertContext";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { AppModal } from "../components/ui/Modal";
+import { CategoryManagerModal } from "../components/settings/CategoryManagerModal";
 import { supabase } from "../lib/supabase";
 
 interface SettingRowProps {
@@ -118,6 +120,7 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
   const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   const [isInfoModalOpen, setIsInfoModalOpen] = useState<string | null>(null);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
 
   useEffect(() => {
     if (user?.id) {
@@ -335,6 +338,13 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
           title="Plans"
           subtitle="Set monthly budgets & savings goals"
           onPress={() => (onNavigate ? onNavigate("plans") : navigation?.navigate?.("Plans"))}
+          showDivider={true}
+        />
+        <SettingRow
+          icon={FolderPlus}
+          title="Category Management"
+          subtitle="Customize expense classifications & subcategories"
+          onPress={() => setIsCategoryModalOpen(true)}
           showDivider={false}
         />
       </View>
@@ -532,6 +542,12 @@ export function ProfileScreen({ onNavigate, navigation }: ProfileScreenProps) {
           isPassword
         />
       </AppModal>
+
+      {/* Dynamic Categories & Subcategories Manager Modal */}
+      <CategoryManagerModal
+        visible={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+      />
     </ScrollView>
   );
 }
