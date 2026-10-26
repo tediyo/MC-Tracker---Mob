@@ -2,9 +2,9 @@ import React, { useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
 import { Edit2, Trash2, Eye } from "lucide-react-native";
 import {
-  COST_CATEGORIES,
-  COST_CATEGORY_LABELS,
-  COST_SUBCATEGORY_LABELS,
+  decodeCostRow,
+  formatCategoryLabel,
+  formatSubcategoryLabel,
   type CostCategory,
   type CostSubcategory,
 } from "../../shared-types";
@@ -12,6 +12,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useCalendar } from "../../context/CalendarContext";
 import { useAppAlert } from "../../context/AlertContext";
+import { useCategories } from "../../context/CategoryContext";
 import { Card } from "../ui/Card";
 import { Input } from "../ui/Input";
 import { AppModal } from "../ui/Modal";
@@ -28,6 +29,7 @@ export function CostHistorySection() {
   const { theme } = useTheme();
   const { calendarMode } = useCalendar();
   const { showAlert } = useAppAlert();
+  const { categories, categoryLabels, categorySubcategoryMap, subcategoryLabels } = useCategories();
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState("");
@@ -55,13 +57,13 @@ export function CostHistorySection() {
         .eq("user_id", userId)
         .order("date", { ascending: false });
       if (error) throw error;
-      return data || [];
+      return (data || []).map((row: any) => decodeCostRow(row));
     },
     enabled: !!userId,
   });
 
-  const handleDelete = (id: string) => {
-    showAlert("Confirm Delete", "Are you sure you want to delete this cost entry?", [
+  const handleDelete = async (id: string) => {
+    showAlert("Confirm Delete", "Are you sure you want to remove this cost record?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
@@ -79,12 +81,12 @@ export function CostHistorySection() {
     if (!editingItem) return;
     const numAmount = parseFloat(editingItem.amount);
     if (isNaN(numAmount) || numAmount <= 0) {
-      showAlert("Invalid Amount", "Please enter a valid amount");
+      showAlert("Validation Error", "Amount must be greater than zero");
       return;
     }
 
-    if (editingItem.subcategory === "other" && !editingItem.description?.trim()) {
-      showAlert("Reason Required", "Please specify a reason when selecting 'Other'.");
+    if (editingItem.subcategory === "other" && (!editingItem.description || !editingItem.description.trim())) {
+      showAlert("Validation Error", "Reason is required when selecting 'Other'");
       return;
     }
 
@@ -95,19 +97,17 @@ export function CostHistorySection() {
         .update({
           amount: numAmount,
           date: editingItem.date,
-          category: editingItem.category,
-          subcategory: editingItem.subcategory,
-          description: editingItem.description,
+          description: editingItem.description || null,
         })
         .eq("id", editingItem.id);
-
       if (error) throw error;
 
+      showAlert("Success", "Expense updated successfully");
       setEditingItem(null);
       queryClient.invalidateQueries({ queryKey: ["mobile-costs"] });
       queryClient.invalidateQueries({ queryKey: ["mobile-dashboard"] });
     } catch (err: any) {
-      showAlert("Update Error", err.message);
+      showAlert("Error", err.message || "Failed to update cost");
     } finally {
       setIsUpdating(false);
     }
@@ -119,16 +119,22 @@ export function CostHistorySection() {
     if (dateTo && r.date > dateTo) return false;
     if (!search.trim()) return true;
     const term = search.toLowerCase();
+    const catLabel = categoryLabels[r.category] || formatCategoryLabel(r.category);
+    const subLabel = subcategoryLabels[r.subcategory] || formatSubcategoryLabel(r.subcategory);
+
     return (
       r.description?.toLowerCase().includes(term) ||
-      COST_CATEGORY_LABELS[r.category as CostCategory]?.toLowerCase().includes(term) ||
-      COST_SUBCATEGORY_LABELS[r.subcategory as CostSubcategory]?.toLowerCase().includes(term) ||
+      catLabel.toLowerCase().includes(term) ||
+      subLabel.toLowerCase().includes(term) ||
       formatDateByMode(r.date, calendarMode).toLowerCase().includes(term) ||
       r.amount.toString().includes(term)
     );
   });
 
-  const categoryOptions = COST_CATEGORIES.map((c) => ({ label: COST_CATEGORY_LABELS[c], value: c }));
+  const categoryOptions = categories.map((c) => ({
+    label: categoryLabels[c] || formatCategoryLabel(c),
+    value: c,
+  }));
 
   return (
     <View>
@@ -167,55 +173,60 @@ export function CostHistorySection() {
       ) : filteredCosts.length === 0 ? (
         <Text style={[styles.emptyText, { color: theme.textMuted }]}>No expense entries match these filters.</Text>
       ) : (
-        filteredCosts.map((item) => (
-          <TouchableOpacity key={item.id} activeOpacity={0.7} onPress={() => setViewingDetail(item)}>
-            <Card style={styles.historyCard}>
-              <View style={styles.historyRow}>
-                <View style={styles.historyLeft}>
-                  <Text style={[styles.historyDate, { color: theme.textMuted }]}>{formatDateByMode(item.date, calendarMode)}</Text>
+        filteredCosts.map((item) => {
+          const catLabel = categoryLabels[item.category] || formatCategoryLabel(item.category);
+          const subLabel = subcategoryLabels[item.subcategory] || formatSubcategoryLabel(item.subcategory);
 
-                  <View style={styles.badgeRow}>
-                    <View style={[styles.catBadge, { backgroundColor: theme.primaryLight }]}>
-                      <Text style={[styles.catBadgeText, { color: theme.primary }]}>
-                        {COST_CATEGORY_LABELS[item.category as CostCategory]}
+          return (
+            <TouchableOpacity key={item.id} activeOpacity={0.7} onPress={() => setViewingDetail(item)}>
+              <Card style={styles.historyCard}>
+                <View style={styles.historyRow}>
+                  <View style={styles.historyLeft}>
+                    <Text style={[styles.historyDate, { color: theme.textMuted }]}>{formatDateByMode(item.date, calendarMode)}</Text>
+
+                    <View style={styles.badgeRow}>
+                      <View style={[styles.catBadge, { backgroundColor: theme.primaryLight }]}>
+                        <Text style={[styles.catBadgeText, { color: theme.primary }]}>
+                          {catLabel}
+                        </Text>
+                      </View>
+                      <Text style={[styles.subText, { color: theme.textSecondary }]}>
+                        {subLabel}
                       </Text>
                     </View>
-                    <Text style={[styles.subText, { color: theme.textSecondary }]}>
-                      {COST_SUBCATEGORY_LABELS[item.subcategory as CostSubcategory]}
+
+                    {item.description ? (
+                      <Text style={[styles.historyDesc, { color: theme.textSecondary }]} numberOfLines={2}>{item.description}</Text>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.historyRight}>
+                    <Text style={[styles.historyAmount, { color: theme.textPrimary }]}>
+                      {formatCurrency(Number(item.amount))}
                     </Text>
-                  </View>
-
-                  {item.description ? (
-                    <Text style={[styles.historyDesc, { color: theme.textSecondary }]} numberOfLines={2}>{item.description}</Text>
-                  ) : null}
-                </View>
-
-                <View style={styles.historyRight}>
-                  <Text style={[styles.historyAmount, { color: theme.textPrimary }]}>
-                    {formatCurrency(Number(item.amount))}
-                  </Text>
-
-                  <View style={styles.actionsRow}>
-                    <TouchableOpacity onPress={() => setViewingDetail(item)} style={styles.actionBtn}>
-                      <Eye size={16} color={theme.primary} />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity onPress={() => setEditingItem(item)} style={styles.actionBtn}>
-                      <Edit2 size={16} color={theme.primary} />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.actionBtn}>
-                      <Trash2 size={16} color={theme.danger} />
-                    </TouchableOpacity>
+                    <View style={styles.actionRow}>
+                      <TouchableOpacity
+                        onPress={() => setEditingItem(item)}
+                        style={[styles.iconButton, { backgroundColor: theme.primaryLight }]}
+                      >
+                        <Edit2 size={14} color={theme.primary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleDelete(item.id)}
+                        style={[styles.iconButton, { backgroundColor: "#fee2e2" }]}
+                      >
+                        <Trash2 size={14} color={theme.danger} />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
-              </View>
-            </Card>
-          </TouchableOpacity>
-        ))
+              </Card>
+            </TouchableOpacity>
+          );
+        })
       )}
 
-      {/* Transaction Details Modal */}
+      {/* Detail Modal */}
       <AppModal
         visible={viewingDetail !== null}
         onClose={() => setViewingDetail(null)}
@@ -224,45 +235,45 @@ export function CostHistorySection() {
         onConfirm={() => setViewingDetail(null)}
       >
         {viewingDetail && (
-          <View style={{ gap: 12, paddingVertical: 4 }}>
-            <View style={{ borderRadius: 10, borderWidth: 1, borderColor: theme.cardBorder, overflow: "hidden" }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Type</Text>
-                <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }}>Expense</Text>
-              </View>
-
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Amount</Text>
-                <Text style={{ fontSize: 14, fontWeight: "800", color: theme.textPrimary }}>-{formatCurrency(Number(viewingDetail.amount))}</Text>
-              </View>
-
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Date</Text>
-                <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }}>{formatDateByMode(viewingDetail.date, calendarMode)} ({viewingDetail.date})</Text>
-              </View>
-
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Category</Text>
-                <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }}>{COST_CATEGORY_LABELS[viewingDetail.category as CostCategory]}</Text>
-              </View>
-
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Subcategory</Text>
-                <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }}>{COST_SUBCATEGORY_LABELS[viewingDetail.subcategory as CostSubcategory]}</Text>
-              </View>
-
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", padding: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, backgroundColor: theme.surface }}>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted, width: 90 }}>Description</Text>
-                <Text style={{ fontSize: 13, fontWeight: "500", color: theme.textPrimary, flex: 1, textAlign: "right" }}>{viewingDetail.description || "—"}</Text>
-              </View>
-
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, backgroundColor: theme.surface }}>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textMuted }}>Record ID</Text>
-                <Text style={{ fontSize: 11, fontFamily: "monospace", color: theme.textMuted }}>{viewingDetail.id}</Text>
-              </View>
+          <View style={{ gap: 14 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ fontSize: 13, color: theme.textSecondary }}>Amount</Text>
+              <Text style={{ fontSize: 18, fontWeight: "800", color: theme.textPrimary }}>
+                {formatCurrency(Number(viewingDetail.amount))}
+              </Text>
             </View>
 
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ fontSize: 13, color: theme.textSecondary }}>Date</Text>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textPrimary }}>
+                {formatDateByMode(viewingDetail.date, calendarMode)}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ fontSize: 13, color: theme.textSecondary }}>Category</Text>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }}>
+                {categoryLabels[viewingDetail.category] || formatCategoryLabel(viewingDetail.category)}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ fontSize: 13, color: theme.textSecondary }}>Subcategory</Text>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }}>
+                {subcategoryLabels[viewingDetail.subcategory] || formatSubcategoryLabel(viewingDetail.subcategory)}
+              </Text>
+            </View>
+
+            {viewingDetail.description ? (
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 13, color: theme.textSecondary }}>Description / Reason</Text>
+                <Text style={{ fontSize: 13, color: theme.textPrimary, lineHeight: 18 }}>
+                  {viewingDetail.description}
+                </Text>
+              </View>
+            ) : null}
+
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
               <TouchableOpacity
                 style={{ flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: theme.cardBorder, alignItems: "center" }}
                 onPress={() => {
@@ -300,7 +311,7 @@ export function CostHistorySection() {
         {editingItem && (
           <>
             <Input
-              label="Amount (USD)"
+              label="Amount (ETB / USD)"
               value={String(editingItem.amount)}
               onChangeText={(val) => setEditingItem({ ...editingItem, amount: val })}
               keyboardType="numeric"
@@ -325,25 +336,25 @@ export function CostHistorySection() {
 }
 
 const styles = StyleSheet.create({
-  filterCard: { padding: 16, marginBottom: 16 },
+  filterCard: { padding: 14, marginBottom: 14 },
   filterHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   filterTitle: { fontSize: 14, fontWeight: "700" },
-  clearFiltersText: { fontSize: 12, fontWeight: "700" },
-  label: { fontSize: 12, fontWeight: "600", marginBottom: 6 },
+  clearFiltersText: { fontSize: 12, fontWeight: "600" },
+  label: { fontSize: 12, fontWeight: "600", marginTop: 8, marginBottom: 4 },
   dateRangeRow: { flexDirection: "row", gap: 10 },
   dateRangeField: { flex: 1 },
-  emptyText: { textAlign: "center", fontSize: 13, marginVertical: 20 },
+  emptyText: { textAlign: "center", marginTop: 32, fontSize: 13 },
   historyCard: { padding: 14, marginBottom: 10 },
-  historyRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  historyLeft: { flex: 1, paddingRight: 10 },
+  historyRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  historyLeft: { flex: 1, gap: 4 },
   historyDate: { fontSize: 11, fontWeight: "600" },
-  badgeRow: { flexDirection: "row", alignItems: "center", gap: 6, marginVertical: 4 },
-  catBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  catBadgeText: { fontSize: 10, fontWeight: "700" },
-  subText: { fontSize: 11, fontWeight: "600" },
-  historyDesc: { fontSize: 12, marginTop: 2 },
-  historyRight: { alignItems: "flex-end" },
-  historyAmount: { fontSize: 15, fontWeight: "800" },
-  actionsRow: { flexDirection: "row", gap: 12, marginTop: 8 },
-  actionBtn: { padding: 4 },
+  badgeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  catBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  catBadgeText: { fontSize: 11, fontWeight: "700" },
+  subText: { fontSize: 12, fontWeight: "600" },
+  historyDesc: { fontSize: 12 },
+  historyRight: { alignItems: "flex-end", gap: 8 },
+  historyAmount: { fontSize: 15, fontWeight: "700" },
+  actionRow: { flexDirection: "row", gap: 6 },
+  iconButton: { padding: 6, borderRadius: 8 },
 });

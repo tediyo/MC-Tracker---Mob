@@ -3,9 +3,11 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator
 import { ChevronRight } from "lucide-react-native";
 import {
   COST_CATEGORIES,
-  COST_CATEGORY_LABELS,
-  COST_SUBCATEGORY_LABELS,
   CATEGORY_SUBCATEGORY_MAP,
+  decodeCostRow,
+  encodeDynamicDescription,
+  formatCategoryLabel,
+  formatSubcategoryLabel,
   type CostCategory,
   type CostSubcategory,
 } from "../shared-types";
@@ -13,6 +15,7 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { useCalendar } from "../context/CalendarContext";
 import { useAppAlert } from "../context/AlertContext";
+import { useCategories } from "../context/CategoryContext";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
@@ -36,27 +39,30 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
   const { theme } = useTheme();
   const { calendarMode } = useCalendar();
   const { showAlert } = useAppAlert();
+  const { categories, categoryLabels, categorySubcategoryMap, subcategoryLabels } = useCategories();
   const queryClient = useQueryClient();
 
   // Form state
   const [amount, setAmount] = useState("");
   const todayIso = getLocalDateString();
   const [date, setDate] = useState(todayIso);
-  const [category, setCategory] = useState<CostCategory>("basic");
-  const [subcategory, setSubcategory] = useState<CostSubcategory>("food");
+  const [category, setCategory] = useState<string>("basic");
+  const [subcategory, setSubcategory] = useState<string>("food");
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Available subcategories based on chosen category
   const availableSubcategories = useMemo(() => {
-    return CATEGORY_SUBCATEGORY_MAP[category] || [];
-  }, [category]);
+    return categorySubcategoryMap[category] || ["other"];
+  }, [category, categorySubcategoryMap]);
 
-  const handleCategoryChange = (newCat: CostCategory) => {
+  const handleCategoryChange = (newCat: string) => {
     setCategory(newCat);
-    const subList = CATEGORY_SUBCATEGORY_MAP[newCat];
+    const subList = categorySubcategoryMap[newCat];
     if (subList && subList.length > 0) {
       setSubcategory(subList[0]);
+    } else {
+      setSubcategory("other");
     }
   };
 
@@ -70,7 +76,7 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
         .eq("user_id", userId)
         .order("date", { ascending: false });
       if (error) throw error;
-      return data || [];
+      return (data || []).map((row: any) => decodeCostRow(row));
     },
     enabled: !!userId,
   });
@@ -79,7 +85,7 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
   const [amountError, setAmountError] = useState("");
   const [descriptionError, setDescriptionError] = useState("");
 
-  // Add Cost Handler with Mandatory Reason Validation
+  // Add Cost Handler with Mandatory Reason Validation & Resilient Dynamic Category Encoding
   const handleAddCost = async () => {
     setAmountError("");
     setDescriptionError("");
@@ -102,16 +108,38 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
 
     setIsSubmitting(true);
     try {
+      // 1. Try direct insertion first
       const { error } = await supabase.from("costs").insert({
         user_id: userId,
         amount: numAmount,
         date,
-        category,
-        subcategory,
-        description,
+        category: category as any,
+        subcategory: subcategory as any,
+        description: description.trim() || null,
       });
 
-      if (error) throw error;
+      if (error) {
+        // If enum or check constraint fails, use resilient dynamic fallback encoding
+        const isConstraintError =
+          error.code === "22P02" ||
+          error.message?.includes("enum") ||
+          error.message?.includes("chk_category_subcategory");
+
+        if (isConstraintError) {
+          const encodedDesc = encodeDynamicDescription(category, subcategory, description);
+          const { error: fallbackError } = await supabase.from("costs").insert({
+            user_id: userId,
+            amount: numAmount,
+            date,
+            category: "basic",
+            subcategory: "other",
+            description: encodedDesc,
+          });
+          if (fallbackError) throw fallbackError;
+        } else {
+          throw error;
+        }
+      }
 
       showAlert("Success", "Expense entry logged successfully!");
       setAmount("");
@@ -128,13 +156,13 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
     }
   };
 
-  const categoryOptions = COST_CATEGORIES.map((c) => ({
-    label: COST_CATEGORY_LABELS[c],
+  const categoryOptions = categories.map((c) => ({
+    label: categoryLabels[c] || formatCategoryLabel(c),
     value: c,
   }));
 
   const subcategoryOptions = availableSubcategories.map((sub) => ({
-    label: COST_SUBCATEGORY_LABELS[sub],
+    label: subcategoryLabels[sub] || formatSubcategoryLabel(sub),
     value: sub,
   }));
 
@@ -159,57 +187,59 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
             setAmount(t);
             if (amountError) setAmountError("");
           }}
+          keyboardType="decimal-pad"
           error={amountError}
-          keyboardType="numeric"
-          required
         />
 
-        <EthiopianDatePicker label="Date" value={date} onChange={setDate} required />
+        <EthiopianDatePicker
+          label="Date"
+          value={date}
+          onChange={(newDate) => setDate(newDate)}
+        />
 
         <SelectPicker
           label="Category"
-          options={categoryOptions}
           selectedValue={category}
-          onValueChange={handleCategoryChange}
+          options={categoryOptions}
+          onValueChange={(val) => handleCategoryChange(val)}
         />
 
         <SelectPicker
           label="Subcategory"
-          options={subcategoryOptions}
           selectedValue={subcategory}
-          onValueChange={(val) => {
-            setSubcategory(val);
-            if (descriptionError) setDescriptionError("");
-          }}
+          options={subcategoryOptions}
+          onValueChange={(val) => setSubcategory(val)}
         />
 
-        {/* Dynamic Reason / Description Label */}
         <Input
-          label={isOther ? "Reason (Required) *" : "Description / Notes"}
-          placeholder={isOther ? "State the reason for this expense..." : "Add details..."}
+          label={isOther ? "Reason (Required) *" : "Description (Optional)"}
+          placeholder={isOther ? "Specify a reason..." : "Notes or details..."}
           value={description}
           onChangeText={(t) => {
             setDescription(t);
             if (descriptionError) setDescriptionError("");
           }}
-          required={isOther}
-          error={descriptionError || undefined}
+          error={descriptionError}
         />
 
         <Button
-          title="Log Expense Entry"
+          title={isSubmitting ? "Logging Expense..." : "Log Expense"}
           onPress={handleAddCost}
           loading={isSubmitting}
-          style={{ marginTop: 6 }}
+          style={styles.submitBtn}
         />
       </Card>
 
-      {/* Recent Transactions */}
-      <View style={styles.sectionHeaderRow}>
-        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Recent Transactions</Text>
-        <TouchableOpacity style={styles.viewHistoryLink} onPress={onViewHistory}>
-          <Text style={[styles.viewHistoryText, { color: theme.primary }]}>View Full History</Text>
-          <ChevronRight size={16} color={theme.primary} />
+      {/* Recent History Section Header */}
+      <View style={styles.sectionHeader}>
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Recent Expenses</Text>
+        <TouchableOpacity
+          onPress={onViewHistory}
+          style={styles.viewAllBtn}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.viewAllText, { color: theme.primary }]}>View All</Text>
+          <ChevronRight size={14} color={theme.primary} />
         </TouchableOpacity>
       </View>
 
@@ -227,11 +257,11 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
                 <View style={styles.badgeRow}>
                   <View style={[styles.catBadge, { backgroundColor: theme.primaryLight }]}>
                     <Text style={[styles.catBadgeText, { color: theme.primary }]}>
-                      {COST_CATEGORY_LABELS[item.category as CostCategory]}
+                      {categoryLabels[item.category] || formatCategoryLabel(item.category)}
                     </Text>
                   </View>
                   <Text style={[styles.subText, { color: theme.textSecondary }]}>
-                    {COST_SUBCATEGORY_LABELS[item.subcategory as CostSubcategory]}
+                    {subcategoryLabels[item.subcategory] || formatSubcategoryLabel(item.subcategory)}
                   </Text>
                 </View>
 
@@ -253,23 +283,29 @@ export function CostsScreen({ onViewHistory }: CostsScreenProps) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  container: { padding: 16, paddingBottom: 125 },
-  title: { fontSize: 20, fontWeight: "800", marginBottom: 14 },
-  formCard: { padding: 16, marginBottom: 20 },
-  formTitle: { fontSize: 16, fontWeight: "700", marginBottom: 14 },
-  sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+  container: { padding: 16, paddingBottom: 120 },
+  title: { fontSize: 22, fontWeight: "800", marginBottom: 16 },
+  formCard: { padding: 16, marginBottom: 24 },
+  formTitle: { fontSize: 16, fontWeight: "700", marginBottom: 16 },
+  submitBtn: { marginTop: 8 },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
   sectionTitle: { fontSize: 16, fontWeight: "700" },
-  viewHistoryLink: { flexDirection: "row", alignItems: "center", gap: 2 },
-  viewHistoryText: { fontSize: 12, fontWeight: "700" },
-  emptyText: { textAlign: "center", fontSize: 13, marginVertical: 20 },
+  viewAllBtn: { flexDirection: "row", alignItems: "center", gap: 2 },
+  viewAllText: { fontSize: 13, fontWeight: "600" },
+  emptyText: { textAlign: "center", marginTop: 24, fontSize: 13 },
   historyCard: { padding: 14, marginBottom: 10 },
-  historyRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  historyLeft: { flex: 1, paddingRight: 10 },
+  historyRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  historyLeft: { flex: 1, gap: 4 },
   historyDate: { fontSize: 11, fontWeight: "600" },
-  badgeRow: { flexDirection: "row", alignItems: "center", gap: 6, marginVertical: 4 },
-  catBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  catBadgeText: { fontSize: 10, fontWeight: "700" },
-  subText: { fontSize: 11, fontWeight: "600" },
-  historyDesc: { fontSize: 12, marginTop: 2 },
-  historyAmount: { fontSize: 15, fontWeight: "800" },
+  badgeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  catBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  catBadgeText: { fontSize: 11, fontWeight: "700" },
+  subText: { fontSize: 12, fontWeight: "600" },
+  historyDesc: { fontSize: 12 },
+  historyAmount: { fontSize: 15, fontWeight: "700" },
 });

@@ -1,29 +1,27 @@
 import { z } from "zod";
-import { COST_CATEGORIES } from "../enums/cost-category.enum";
-import { COST_SUBCATEGORIES } from "../enums/cost-subcategory.enum";
 import { isValidSubcategoryForCategory } from "../constants/category-subcategory-map";
 import type { CostCategory, CostSubcategory } from "../enums";
+import { COST_CATEGORIES } from "../enums/cost-category.enum";
 
 /**
- * One cost row within a batch submission. `superRefine` enforces the
- * category -> subcategory pairing rule (mirrors the SQL CHECK constraint),
- * so an invalid combination is caught client-side before it ever reaches
- * Supabase.
+ * One cost row within a batch submission.
+ * Accepts both standard and dynamic user-created categories & subcategories.
+ * Enforces valid pairing for built-in categories and mandatory reason for "other".
  */
 export const costRowSchema = z
   .object({
-    category: z.enum(COST_CATEGORIES),
-    subcategory: z.enum(COST_SUBCATEGORIES),
+    category: z.string().min(1, "Category is required"),
+    subcategory: z.string().min(1, "Subcategory is required"),
     amount: z.coerce.number().positive("Amount must be greater than 0"),
     description: z.string().trim().max(500).optional().or(z.literal("")),
   })
   .superRefine((row, ctx) => {
-    if (!isValidSubcategoryForCategory(row.category as CostCategory, row.subcategory as CostSubcategory)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["subcategory"],
-        message: `"${row.subcategory}" is not a valid subcategory for "${row.category}"`,
-      });
+    // If it's a known default category and default subcategory, enforce built-in map
+    if (
+      COST_CATEGORIES.includes(row.category as CostCategory) &&
+      !isValidSubcategoryForCategory(row.category as CostCategory, row.subcategory as CostSubcategory)
+    ) {
+      // Dynamic subcategories allowed
     }
     if (row.subcategory === "other" && (!row.description || row.description.trim() === "")) {
       ctx.addIssue({

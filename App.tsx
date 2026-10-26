@@ -6,6 +6,7 @@ import { ThemeProvider } from "./src/context/ThemeContext";
 import { CalendarProvider } from "./src/context/CalendarContext";
 import { LiveModeProvider } from "./src/context/LiveModeContext";
 import { AlertProvider } from "./src/context/AlertContext";
+import { CategoryProvider } from "./src/context/CategoryContext";
 import { MainNavigator } from "./src/navigation/MainNavigator";
 import { ErrorBoundary } from "./src/components/ErrorBoundary";
 import { initNotificationService } from "./src/services/notificationService";
@@ -33,8 +34,10 @@ export default function App() {
               <LiveModeProvider>
                 <AlertProvider>
                   <AuthProvider>
-                    <StatusBar barStyle="light-content" />
-                    <MainNavigator />
+                    <CategoryProvider>
+                      <StatusBar barStyle="light-content" />
+                      <MainNavigator />
+                    </CategoryProvider>
                   </AuthProvider>
                 </AlertProvider>
               </LiveModeProvider>

@@ -8,16 +8,6 @@ export interface DateRange {
   end: Date;
 }
 
-/**
- * Module-level cache: ISO date strings (YYYY-MM-DD) repeat heavily across
- * multiple calls per render — the same rows are scanned for the current
- * range, the previous range, and (in buildTrendSeries) once per bucket.
- * Parsing each unique string just once and reusing the Date object avoids
- * re-running the full string parser on every row × every call.
- *
- * The key space is bounded (YYYY-MM-DD strings for a personal tracker's
- * data range) so the Map never grows unboundedly.
- */
 const _parsedDateCache = new Map<string, Date>();
 
 export function parseISOCached(dateStr: string): Date {
@@ -49,30 +39,34 @@ export function sumCosts(rows: readonly CostRow[], range: DateRange): number {
   return filterCostsInRange(rows, range).reduce((total, row) => total + Number(row.amount), 0);
 }
 
-/** Cost total per top-level category (basic/fancy/extra), zero-filled so callers never see `undefined`. */
+/** Cost total per top-level category (supports standard and dynamic custom categories). */
 export function groupCostsByCategory(
   rows: readonly CostRow[],
   range: DateRange,
-): Record<CostCategory, number> {
-  const totals: Record<CostCategory, number> = { basic: 0, fancy: 0, extra: 0 };
+): Record<string, number> {
+  const totals: Record<string, number> = { basic: 0, fancy: 0, extra: 0 };
   for (const row of filterCostsInRange(rows, range)) {
-    totals[row.category] += Number(row.amount);
+    totals[row.category] = (totals[row.category] ?? 0) + Number(row.amount);
   }
   return totals;
 }
 
 /**
- * Cost total per subcategory *within one category*, zero-filled for every
- * subcategory valid under that category (per `CATEGORY_SUBCATEGORY_MAP`) so
- * a pie chart can render every slice even when a subcategory has no rows yet.
+ * Cost total per subcategory within one category.
+ * Supports custom categories and dynamic subcategories gracefully.
  */
 export function groupCostsBySubcategory(
   rows: readonly CostRow[],
   range: DateRange,
-  category: CostCategory,
+  category: string,
+  validSubcategories?: readonly string[],
 ): Record<string, number> {
   const totals: Record<string, number> = {};
-  for (const subcategory of CATEGORY_SUBCATEGORY_MAP[category]) {
+  const subcategories =
+    validSubcategories ??
+    (CATEGORY_SUBCATEGORY_MAP as Record<string, readonly string[]>)[category] ??
+    [];
+  for (const subcategory of subcategories) {
     totals[subcategory] = 0;
   }
   for (const row of filterCostsInRange(rows, range)) {
