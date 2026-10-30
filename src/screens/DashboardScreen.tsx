@@ -22,6 +22,7 @@ import {
   Target,
   Filter,
   X,
+  Calendar,
 } from "lucide-react-native";
 import {
   ETHIOPIAN_MONTHS,
@@ -54,8 +55,10 @@ import { SimpleLineChart } from "../components/charts/LineChart";
 import { SimplePieChart } from "../components/charts/PieChart";
 import { ProgressRing } from "../components/charts/ProgressRing";
 import { QuickAddModal } from "../components/ui/QuickAddModal";
-import { DashboardCardsSkeleton, ChartCardSkeleton } from "../components/ui/Skeleton";
+import { AppModal } from "../components/ui/Modal";
+import { Skeleton, DashboardCardsSkeleton, ChartCardSkeleton } from "../components/ui/Skeleton";
 import { formatCurrency } from "../lib/utils";
+import { CostsCarousel } from "../components/dashboard/CostsCarousel";
 import { buildOverviewReportHtml } from "../lib/reportGenerator";
 import { checkBudgetThresholds, checkMonthlyPlanSurpassed } from "../services/notificationService";
 import { useQuery } from "@tanstack/react-query";
@@ -115,6 +118,8 @@ export function DashboardScreen() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [subcategoryFilter, setSubcategoryFilter] = useState<string>("all");
   const [isFilterOpen, setIsFilterOpen] = useState<boolean>(false);
+  const [isPeriodModalOpen, setIsPeriodModalOpen] = useState<boolean>(false);
+  const [isExpenseFilterModalOpen, setIsExpenseFilterModalOpen] = useState<boolean>(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState<boolean>(false);
   const [timeframe, setTimeframe] = useState<TimeFrame>("monthly");
   const [refYear, setRefYear] = useState<number>(currentEth.year);
@@ -383,6 +388,24 @@ export function DashboardScreen() {
     }),
   );
 
+  const weekOptions = useMemo(
+    () => [
+      { label: "Week 1 (Days 1 - 7)", value: 1 },
+      { label: "Week 2 (Days 8 - 14)", value: 2 },
+      { label: "Week 3 (Days 15 - 21)", value: 3 },
+      { label: `Week 4 (Days 22 - ${getDaysInEthiopianMonth(refYear, refMonth)})`, value: 4 },
+    ],
+    [refYear, refMonth]
+  );
+
+  const dayOptions = useMemo(() => {
+    const totalDays = getDaysInEthiopianMonth(refYear, refMonth) || 30;
+    return Array.from({ length: totalDays }, (_, i) => ({
+      label: `Day ${i + 1}`,
+      value: i + 1,
+    }));
+  }, [refYear, refMonth]);
+
   const monthName = ETHIOPIAN_MONTHS[refMonth - 1]?.nameEn || `Month ${refMonth}`;
 
   const GREGORIAN_MONTHS = [
@@ -391,18 +414,18 @@ export function DashboardScreen() {
   ];
 
   const periodLabel = useMemo(() => {
+    if (timeframe === "weekly") return `Week ${refWeek}`;
+
     if (calendarMode === "gregorian") {
       const d = rangeStart;
       const gYear = d.getFullYear();
       const gMonthName = GREGORIAN_MONTHS[d.getMonth()];
       if (timeframe === "yearly") return `${gYear} G.C.`;
-      if (timeframe === "weekly") return `Week of ${gMonthName} ${d.getDate()}, ${gYear}`;
       if (timeframe === "daily") return `${gMonthName} ${d.getDate()}, ${gYear}`;
       return `${gMonthName} ${gYear}`;
     }
 
     if (timeframe === "yearly") return `${refYear} E.C.`;
-    if (timeframe === "weekly") return `Week ${refWeek} - ${monthName} ${refYear} E.C.`;
     if (timeframe === "daily") return `${refDay} ${monthName} ${refYear} E.C.`;
     return `${monthName} ${refYear} E.C.`;
   }, [calendarMode, timeframe, rangeStart, refYear, refMonth, refWeek, refDay, monthName]);
@@ -516,60 +539,80 @@ export function DashboardScreen() {
         contentContainerStyle={styles.container}
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={theme.primary} />}
       >
-      {/* Header with Clean Controls */}
-      <View style={styles.headerRow}>
-        <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Financial Overview</Text>
+      {/* Header with Title, Period Subtitle & Controls */}
+      <View style={styles.headerContainer}>
+        {/* Row 1: Screen Title & Header Action Icons */}
+        <View style={styles.headerTopRow}>
+          <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Financial Overview</Text>
 
-        <View style={styles.headerRightActions}>
+          <View style={styles.headerActionIcons}>
+            <TouchableOpacity
+              style={[styles.actionIconBtn, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}
+              onPress={toggleTheme}
+              activeOpacity={0.7}
+            >
+              {themeMode === "dark" ? (
+                <Sun size={17} color={theme.primary} />
+              ) : (
+                <Moon size={17} color={theme.primary} />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionIconBtn, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}
+              onPress={() => setShowBalances(!showBalances)}
+              activeOpacity={0.7}
+            >
+              {showBalances ? (
+                <EyeOff size={17} color={theme.primary} />
+              ) : (
+                <Eye size={17} color={theme.primary} />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionIconBtn, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}
+              onPress={handleDownloadReport}
+              disabled={isGeneratingReport || isLoading}
+              activeOpacity={0.7}
+            >
+              {isGeneratingReport ? (
+                <ActivityIndicator size="small" color={theme.primary} />
+              ) : (
+                <Download size={17} color={theme.primary} />
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Row 2: Interactive Period Subtitle & Timeframe Pills */}
+        <View style={styles.headerSubRow}>
           <TouchableOpacity
-            style={[styles.actionIconBtn, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}
-            onPress={toggleTheme}
+            style={[styles.periodSubtitleBtn, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}
+            onPress={() => setIsPeriodModalOpen(true)}
             activeOpacity={0.7}
           >
-            {themeMode === "dark" ? (
-              <Sun size={18} color={theme.primary} />
-            ) : (
-              <Moon size={18} color={theme.primary} />
-            )}
+            <Calendar size={13} color={theme.primary} />
+            <Text style={[styles.periodSubtitleText, { color: theme.textPrimary }]} numberOfLines={1}>
+              {periodLabel}
+            </Text>
+            <ChevronDown size={12} color={theme.textMuted} />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.actionIconBtn, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}
-            onPress={() => setShowBalances(!showBalances)}
-            activeOpacity={0.7}
-          >
-            {showBalances ? (
-              <EyeOff size={18} color={theme.primary} />
-            ) : (
-              <Eye size={18} color={theme.primary} />
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionIconBtn, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}
-            onPress={handleDownloadReport}
-            disabled={isGeneratingReport || isLoading}
-            activeOpacity={0.7}
-          >
-            {isGeneratingReport ? (
-              <ActivityIndicator size="small" color={theme.primary} />
-            ) : (
-              <Download size={18} color={theme.primary} />
-            )}
-          </TouchableOpacity>
-
+          {/* Timeframe Filter Pills */}
           <View style={[styles.timeframeContainer, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
             {(["daily", "weekly", "monthly", "yearly"] as TimeFrame[]).map((tf) => (
               <TouchableOpacity
                 key={tf}
                 style={[styles.tfPill, timeframe === tf && { backgroundColor: theme.primary }]}
                 onPress={() => setTimeframe(tf)}
+                activeOpacity={0.7}
               >
                 <Text
                   style={[
                     styles.tfPillText,
                     { color: theme.textMuted },
-                    timeframe === tf && { color: "#ffffff" },
+                    timeframe === tf && { color: "#ffffff", fontWeight: "700" },
                   ]}
                 >
                   {tf.charAt(0).toUpperCase() + tf.slice(1)}
@@ -580,224 +623,115 @@ export function DashboardScreen() {
         </View>
       </View>
 
-      {/* Ethiopian Date Navigation - steps by the unit matching the active timeframe pill
-          (day/week/month/year), rolling over into the adjacent month/year at the edges. */}
-      <View style={[styles.dateNavRow, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
-        <TouchableOpacity
-          style={[styles.navBtn, { backgroundColor: "transparent" }]}
-          onPress={() => {
-            if (timeframe === "yearly") {
-              setRefYear(refYear - 1);
-            } else if (timeframe === "weekly") {
-              if (refWeek > 1) setRefWeek(refWeek - 1);
-              else if (refMonth > 1) {
-                setRefMonth(refMonth - 1);
-                setRefWeek(4);
-              } else {
-                setRefMonth(13);
-                setRefYear(refYear - 1);
-                setRefWeek(4);
-              }
-            } else if (timeframe === "daily") {
-              if (refDay > 1) setRefDay(refDay - 1);
-              else if (refMonth > 1) {
-                const prevMonth = refMonth - 1;
-                setRefMonth(prevMonth);
-                setRefDay(getDaysInEthiopianMonth(refYear, prevMonth));
-              } else {
-                setRefMonth(13);
-                setRefYear(refYear - 1);
-                setRefDay(getDaysInEthiopianMonth(refYear - 1, 13));
-              }
-            } else if (refMonth > 1) {
-              setRefMonth(refMonth - 1);
-            } else {
-              setRefMonth(13);
-              setRefYear(refYear - 1);
-            }
-          }}
-        >
-          <ChevronLeft size={18} color={theme.primary} />
-        </TouchableOpacity>
+      {/* Hero Carousel at Top of Tabs - renders for all filters with screen-adapted width */}
+      {isLoading ? (
+        <View style={{ marginVertical: 8, paddingHorizontal: 4 }}>
+          <Skeleton width="100%" height={170} borderRadius={16} />
+        </View>
+      ) : (
+        <CostsCarousel
+          totalIncome={dashboardData?.totalIncome || 0}
+          totalCosts={dashboardData?.totalCosts || 0}
+          basicCost={dashboardData?.basicCost || 0}
+          fancyCost={dashboardData?.fancyCost || 0}
+          extraCost={dashboardData?.extraCost || 0}
+          costLimit={dashboardData?.costLimit ?? null}
+          costVariance={dashboardData?.costVariance ?? null}
+          netProfitLoss={dashboardData?.netProfitLoss || 0}
+          showBalances={showBalances}
+          timeframe={timeframe}
+          refYear={refYear}
+          refMonth={refMonth}
+          refWeek={refWeek}
+          periodLabel={periodLabel}
+          activeFilter={analyticsFilter}
+        />
+      )}
 
-        <Text style={[styles.dateNavText, { color: theme.textPrimary }]}>{periodLabel}</Text>
-
-        <TouchableOpacity
-          style={[styles.navBtn, { backgroundColor: "transparent" }]}
-          onPress={() => {
-            if (timeframe === "yearly") {
-              setRefYear(refYear + 1);
-            } else if (timeframe === "weekly") {
-              if (refWeek < 4) setRefWeek(refWeek + 1);
-              else if (refMonth < 13) {
-                setRefMonth(refMonth + 1);
-                setRefWeek(1);
-              } else {
-                setRefMonth(1);
-                setRefYear(refYear + 1);
-                setRefWeek(1);
-              }
-            } else if (timeframe === "daily") {
-              const daysInCurrentMonth = getDaysInEthiopianMonth(refYear, refMonth);
-              if (refDay < daysInCurrentMonth) setRefDay(refDay + 1);
-              else if (refMonth < 13) {
-                setRefMonth(refMonth + 1);
-                setRefDay(1);
-              } else {
-                setRefMonth(1);
-                setRefYear(refYear + 1);
-                setRefDay(1);
-              }
-            } else if (refMonth < 13) {
-              setRefMonth(refMonth + 1);
-            } else {
-              setRefMonth(1);
-              setRefYear(refYear + 1);
-            }
-          }}
-        >
-          <ChevronRight size={18} color={theme.primary} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Analytics Filter Selector (All / Incomes / Costs) */}
-      <View style={[styles.filterBar, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
-        {(["all", "incomes", "costs"] as const).map((filterKey) => (
-          <TouchableOpacity
-            key={filterKey}
-            style={[
-              styles.filterTab,
-              analyticsFilter === filterKey && { backgroundColor: theme.primary },
-            ]}
-            onPress={() => setAnalyticsFilter(filterKey)}
-            activeOpacity={0.8}
-          >
-            <Text
+      {/* Analytics Filter Selector & Expense Filter Trigger */}
+      <View style={styles.tabsRow}>
+        <View style={[styles.filterBar, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
+          {(["all", "incomes", "costs"] as const).map((filterKey) => (
+            <TouchableOpacity
+              key={filterKey}
               style={[
-                styles.filterTabText,
-                { color: analyticsFilter === filterKey ? "#ffffff" : theme.textSecondary },
-                analyticsFilter === filterKey && styles.filterTabActiveText,
+                styles.filterTab,
+                analyticsFilter === filterKey && { backgroundColor: theme.primary },
               ]}
+              onPress={() => setAnalyticsFilter(filterKey)}
+              activeOpacity={0.8}
             >
-              {filterKey === "all" ? "All Overview" : filterKey === "incomes" ? "Incomes Only" : "Costs Only"}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+              <Text
+                style={[
+                  styles.filterTabText,
+                  { color: analyticsFilter === filterKey ? "#ffffff" : theme.textSecondary },
+                  analyticsFilter === filterKey && styles.filterTabActiveText,
+                ]}
+              >
+                {filterKey === "all" ? "All Overview" : filterKey === "incomes" ? "Incomes Only" : "Costs Only"}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-      {/* Category and Subcategory Filter Section (Collapsible) */}
-      {analyticsFilter !== "incomes" && (
-        <Card style={styles.expenseFilterCard}>
+        {analyticsFilter !== "incomes" && (
           <TouchableOpacity
-            style={styles.expenseFilterHeader}
-            onPress={() => setIsFilterOpen(!isFilterOpen)}
+            style={[
+              styles.filterModalTriggerBtn,
+              { backgroundColor: theme.surface, borderColor: theme.cardBorder },
+              (categoryFilter !== "all" || subcategoryFilter !== "all") && { borderColor: theme.primary },
+            ]}
+            onPress={() => setIsExpenseFilterModalOpen(true)}
             activeOpacity={0.7}
           >
-            <View style={styles.expenseFilterHeaderLeft}>
-              <Filter size={15} color={theme.primary} />
-              <Text style={[styles.expenseFilterTitle, { color: theme.textPrimary }]}>
-                Filter Expenses
-              </Text>
-              {(categoryFilter !== "all" || subcategoryFilter !== "all") && (
-                <View style={[styles.activeFilterDot, { backgroundColor: theme.primary }]} />
-              )}
-            </View>
-
-            <View style={styles.expenseFilterHeaderRight}>
-              {(categoryFilter !== "all" || subcategoryFilter !== "all") && (
-                <TouchableOpacity
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    setCategoryFilter("all");
-                    setSubcategoryFilter("all");
-                  }}
-                  style={[styles.clearFilterBtn, { backgroundColor: theme.primaryLight }]}
-                  activeOpacity={0.7}
-                >
-                  <X size={12} color={theme.primary} />
-                  <Text style={[styles.clearFilterText, { color: theme.primary }]}>Reset</Text>
-                </TouchableOpacity>
-              )}
-              {isFilterOpen ? (
-                <ChevronUp size={18} color={theme.primary} />
-              ) : (
-                <ChevronDown size={18} color={theme.primary} />
-              )}
-            </View>
+            <Filter size={16} color={theme.primary} />
+            {(categoryFilter !== "all" || subcategoryFilter !== "all") && (
+              <View style={[styles.activeFilterDotSmall, { backgroundColor: theme.primary }]} />
+            )}
           </TouchableOpacity>
+        )}
+      </View>
 
-          {/* Expanded Filter Body */}
-          {isFilterOpen && (
-            <View style={[styles.expenseFilterBody, { borderTopColor: theme.cardBorder }]}>
-              <View style={styles.filterPickersCol}>
-                <SelectPicker
-                  label="Category"
-                  options={categoryFilterOptions}
-                  selectedValue={categoryFilter}
-                  onValueChange={handleCategoryFilterChange}
-                />
-
-                <SelectPicker
-                  label="Subcategory"
-                  options={subcategoryFilterOptions}
-                  selectedValue={subcategoryFilter}
-                  onValueChange={handleSubcategoryFilterChange}
-                />
-              </View>
-
-              {(categoryFilter !== "all" || subcategoryFilter !== "all") && (
-                <View style={styles.activeFilterChipsRow}>
-                  <Text style={[styles.activeFilterLabel, { color: theme.textMuted }]}>Active:</Text>
-                  {categoryFilter !== "all" && (
-                    <View style={[styles.activeChip, { backgroundColor: theme.primaryLight }]}>
-                      <Text style={[styles.activeChipText, { color: theme.primary }]}>
-                        {categoryLabels[categoryFilter] || formatCategoryLabel(categoryFilter)}
-                      </Text>
-                    </View>
-                  )}
-                  {subcategoryFilter !== "all" && (
-                    <View style={[styles.activeChip, { backgroundColor: theme.primaryLight }]}>
-                      <Text style={[styles.activeChipText, { color: theme.primary }]}>
-                        {subcategoryLabels[subcategoryFilter] || formatSubcategoryLabel(subcategoryFilter)}
-                      </Text>
-                    </View>
-                  )}
-                  {dashboardData && (
-                    <Text style={[styles.filterCountText, { color: theme.textMuted }]}>
-                      ({dashboardData.filteredCosts.length} items)
-                    </Text>
-                  )}
-                </View>
-              )}
+      {/* Active Filter Chips Row - visible when filters are applied */}
+      {analyticsFilter !== "incomes" && (categoryFilter !== "all" || subcategoryFilter !== "all") && (
+        <View style={styles.activeFilterChipRow}>
+          <Text style={[styles.activeFilterChipLabel, { color: theme.textMuted }]}>Filter:</Text>
+          {categoryFilter !== "all" && (
+            <View style={[styles.activeFilterChip, { backgroundColor: theme.primaryLight }]}>
+              <Text style={[styles.activeFilterChipText, { color: theme.primary }]}>
+                {categoryLabels[categoryFilter] || formatCategoryLabel(categoryFilter)}
+              </Text>
+              <TouchableOpacity
+                onPress={() => handleCategoryFilterChange("all")}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <X size={12} color={theme.primary} />
+              </TouchableOpacity>
             </View>
           )}
-
-          {/* Collapsed summary when filters are active */}
-          {!isFilterOpen && (categoryFilter !== "all" || subcategoryFilter !== "all") && (
-            <View style={[styles.collapsedActiveRow, { borderTopColor: theme.cardBorder }]}>
-              <Text style={[styles.activeFilterLabel, { color: theme.textMuted }]}>Filtered by:</Text>
-              {categoryFilter !== "all" && (
-                <View style={[styles.activeChip, { backgroundColor: theme.primaryLight }]}>
-                  <Text style={[styles.activeChipText, { color: theme.primary }]}>
-                    {COST_CATEGORY_LABELS[categoryFilter as CostCategory]}
-                  </Text>
-                </View>
-              )}
-              {subcategoryFilter !== "all" && (
-                <View style={[styles.activeChip, { backgroundColor: theme.primaryLight }]}>
-                  <Text style={[styles.activeChipText, { color: theme.primary }]}>
-                    {COST_SUBCATEGORY_LABELS[subcategoryFilter as CostSubcategory] || subcategoryFilter}
-                  </Text>
-                </View>
-              )}
-              {dashboardData && (
-                <Text style={[styles.filterCountText, { color: theme.textMuted }]}>
-                  ({dashboardData.filteredCosts.length} items)
-                </Text>
-              )}
+          {subcategoryFilter !== "all" && (
+            <View style={[styles.activeFilterChip, { backgroundColor: theme.primaryLight }]}>
+              <Text style={[styles.activeFilterChipText, { color: theme.primary }]}>
+                {subcategoryLabels[subcategoryFilter] || formatSubcategoryLabel(subcategoryFilter)}
+              </Text>
+              <TouchableOpacity
+                onPress={() => handleSubcategoryFilterChange("all")}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <X size={12} color={theme.primary} />
+              </TouchableOpacity>
             </View>
           )}
-        </Card>
+          <TouchableOpacity
+            onPress={() => {
+              setCategoryFilter("all");
+              setSubcategoryFilter("all");
+            }}
+            style={styles.activeFilterClearAllBtn}
+          >
+            <Text style={[styles.activeFilterClearAllText, { color: theme.textMuted }]}>Reset</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       {isLoading ? (
@@ -820,22 +754,6 @@ export function DashboardScreen() {
               </Card>
             )}
 
-            {(analyticsFilter === "all" || analyticsFilter === "costs") && (
-              <Card style={styles.cardHalf}>
-                <View style={styles.cardHeaderSmall}>
-                  <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Total Costs</Text>
-                  {(categoryFilter !== "all" || subcategoryFilter !== "all") && (
-                    <Text style={[styles.filteredIndicator, { color: theme.primary }]} numberOfLines={1}>
-                      Filtered
-                    </Text>
-                  )}
-                </View>
-                <Text style={[styles.cardValue, { color: theme.textPrimary }]}>
-                  {showBalances ? formatCurrency(dashboardData?.totalCosts || 0) : "ETB ••••••"}
-                </Text>
-              </Card>
-            )}
-
             {(analyticsFilter === "all" || analyticsFilter === "incomes") && (
               <Card style={styles.cardHalf}>
                 <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Net Savings</Text>
@@ -851,7 +769,7 @@ export function DashboardScreen() {
             )}
 
             {(analyticsFilter === "all" || analyticsFilter === "costs") && (
-              <Card style={styles.cardHalf}>
+              <Card style={analyticsFilter === "costs" ? styles.cardHalf : styles.cardFull}>
                 <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Cost Budget</Text>
                 <Text style={[styles.cardValue, { color: theme.textPrimary }]}>
                   {dashboardData?.costLimit != null
@@ -873,20 +791,17 @@ export function DashboardScreen() {
             )}
 
             {analyticsFilter === "costs" && (
-              <>
-                <Card style={styles.cardHalf}>
-                  <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Basic Expenses</Text>
-                  <Text style={[styles.cardValue, { color: theme.textPrimary }]}>
-                    {showBalances ? formatCurrency(dashboardData?.basicCost || 0) : "ETB ••••••"}
-                  </Text>
-                </Card>
-                <Card style={styles.cardHalf}>
-                  <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Fancy Expenses</Text>
-                  <Text style={[styles.cardValue, { color: "#f59e0b" }]}>
-                    {showBalances ? formatCurrency(dashboardData?.fancyCost || 0) : "ETB ••••••"}
-                  </Text>
-                </Card>
-              </>
+              <Card style={styles.cardHalf}>
+                <Text style={[styles.cardLabel, { color: theme.textMuted }]}>Net Savings</Text>
+                <Text
+                  style={[
+                    styles.cardValue,
+                    { color: (dashboardData?.netProfitLoss || 0) >= 0 ? theme.primary : theme.danger },
+                  ]}
+                >
+                  {showBalances ? formatCurrency(dashboardData?.netProfitLoss || 0) : "ETB ••••••"}
+                </Text>
+              </Card>
             )}
           </View>
 
@@ -1284,6 +1199,134 @@ export function DashboardScreen() {
         </>
       )}
       </ScrollView>
+
+      {/* Timeframe & Date Navigation Modal */}
+      <AppModal
+        visible={isPeriodModalOpen}
+        onClose={() => setIsPeriodModalOpen(false)}
+        title="Select Period"
+      >
+        <View style={styles.modalContent}>
+          <Text style={[styles.modalSectionLabel, { color: theme.textSecondary }]}>Timeframe</Text>
+          <View style={styles.modalTfGrid}>
+            {(["daily", "weekly", "monthly", "yearly"] as TimeFrame[]).map((tf) => (
+              <TouchableOpacity
+                key={tf}
+                style={[
+                  styles.modalTfBtn,
+                  { backgroundColor: theme.surface, borderColor: theme.cardBorder },
+                  timeframe === tf && { backgroundColor: theme.primary, borderColor: theme.primary },
+                ]}
+                onPress={() => setTimeframe(tf)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.modalTfBtnText,
+                    { color: theme.textPrimary },
+                    timeframe === tf && { color: "#ffffff", fontWeight: "700" },
+                  ]}
+                >
+                  {tf.charAt(0).toUpperCase() + tf.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={styles.modalPickerGroup}>
+            <SelectPicker
+              label="Year (E.C.)"
+              options={yearOptions}
+              selectedValue={refYear}
+              onValueChange={(val) => setRefYear(Number(val))}
+            />
+
+            {timeframe !== "yearly" && (
+              <SelectPicker
+                label="Month"
+                options={monthOptions}
+                selectedValue={refMonth}
+                onValueChange={(val) => setRefMonth(Number(val))}
+              />
+            )}
+
+            {timeframe === "weekly" && (
+              <SelectPicker
+                label="Week"
+                options={weekOptions}
+                selectedValue={refWeek}
+                onValueChange={(val) => setRefWeek(Number(val))}
+              />
+            )}
+
+            {timeframe === "daily" && (
+              <SelectPicker
+                label="Day"
+                options={dayOptions}
+                selectedValue={refDay}
+                onValueChange={(val) => setRefDay(Number(val))}
+              />
+            )}
+          </View>
+
+          <TouchableOpacity
+            style={[styles.modalDoneBtn, { backgroundColor: theme.primary }]}
+            onPress={() => setIsPeriodModalOpen(false)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.modalDoneBtnText}>Apply</Text>
+          </TouchableOpacity>
+        </View>
+      </AppModal>
+
+      {/* Expense Category & Subcategory Filter Modal */}
+      <AppModal
+        visible={isExpenseFilterModalOpen}
+        onClose={() => setIsExpenseFilterModalOpen(false)}
+        title="Filter Expenses"
+      >
+        <View style={styles.modalContent}>
+          <View style={styles.modalPickerGroup}>
+            <SelectPicker
+              label="Category"
+              options={categoryFilterOptions}
+              selectedValue={categoryFilter}
+              onValueChange={handleCategoryFilterChange}
+            />
+
+            <SelectPicker
+              label="Subcategory"
+              options={subcategoryFilterOptions}
+              selectedValue={subcategoryFilter}
+              onValueChange={handleSubcategoryFilterChange}
+            />
+          </View>
+
+          <View style={styles.modalActionsRow}>
+            {(categoryFilter !== "all" || subcategoryFilter !== "all") && (
+              <TouchableOpacity
+                style={[styles.modalResetBtn, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}
+                onPress={() => {
+                  setCategoryFilter("all");
+                  setSubcategoryFilter("all");
+                }}
+                activeOpacity={0.7}
+              >
+                <X size={14} color={theme.textPrimary} />
+                <Text style={[styles.modalResetBtnText, { color: theme.textPrimary }]}>Clear All</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={[styles.modalDoneBtn, { backgroundColor: theme.primary, flex: 1 }]}
+              onPress={() => setIsExpenseFilterModalOpen(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalDoneBtnText}>Apply Filters</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </AppModal>
     </View>
   );
 }
@@ -1298,17 +1341,40 @@ const styles = StyleSheet.create({
   // skips/short-circuits drawing for zero-opacity views). Off-screen positioning alone is
   // already enough to keep it invisible to the user.
   offscreenCapture: { position: "absolute", top: -9999, left: -9999 },
-  headerRow: {
-    flexDirection: "column",
-    gap: 8,
+  headerContainer: {
     marginBottom: 12,
+    gap: 8,
+  },
+  headerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   headerTitle: { fontSize: 20, fontWeight: "800" },
-  headerRightActions: {
+  headerActionIcons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  headerSubRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
+  },
+  periodSubtitleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexShrink: 1,
+  },
+  periodSubtitleText: {
+    fontSize: 12,
+    fontWeight: "700",
   },
   actionIconBtn: {
     padding: 8,
@@ -1317,29 +1383,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  timeframeContainer: {
-    flexDirection: "row",
-    borderRadius: 10,
-    padding: 3,
-    borderWidth: 1,
-  },
-  tfPill: { paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8 },
-  tfPillText: { fontSize: 11, fontWeight: "600" },
-  dateNavRow: {
+  tabsRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    padding: 10,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
+    gap: 8,
+    marginBottom: 8,
   },
   filterBar: {
+    flex: 1,
     flexDirection: "row",
     borderRadius: 12,
     borderWidth: 1,
     padding: 3,
-    marginBottom: 16,
   },
   filterTab: {
     flex: 1,
@@ -1355,10 +1410,151 @@ const styles = StyleSheet.create({
   filterTabActiveText: {
     fontWeight: "800",
   },
-  navBtn: { padding: 6, borderRadius: 8 },
-  dateNavText: { fontSize: 14, fontWeight: "700" },
+  filterModalTriggerBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  activeFilterDotSmall: {
+    position: "absolute",
+    top: 7,
+    right: 7,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  activeFilterChipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  activeFilterChipLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  activeFilterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  activeFilterChipText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  activeFilterClearAllBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  activeFilterClearAllText: {
+    fontSize: 11,
+    fontWeight: "600",
+    textDecorationLine: "underline",
+  },
+  modalContent: {
+    gap: 16,
+    paddingVertical: 4,
+  },
+  modalSectionLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  modalTfGrid: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  modalTfBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  modalTfBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  modalPickerGroup: {
+    gap: 12,
+  },
+  modalActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 4,
+  },
+  modalResetBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  modalResetBtnText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  modalDoneBtn: {
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+  },
+  modalDoneBtnText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  timeframeContainer: {
+    flexDirection: "row",
+    borderRadius: 10,
+    padding: 2,
+    borderWidth: 1,
+  },
+  tfPill: { paddingVertical: 5, paddingHorizontal: 8, borderRadius: 8 },
+  tfPillText: { fontSize: 11, fontWeight: "600" },
+  dateNavRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  navBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dateNavCenterBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  dateNavText: { fontSize: 13, fontWeight: "700" },
   cardsGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
   cardHalf: { width: "48%" },
+  cardFull: { width: "100%" },
   cardLabel: { fontSize: 11, fontWeight: "600", marginBottom: 4 },
   cardValue: { fontSize: 16, fontWeight: "800" },
   badgeText: { fontSize: 10, fontWeight: "600", marginTop: 4 },
